@@ -1,5 +1,5 @@
 struct Url {
-
+    scheme: String
 }
 
 impl Url {
@@ -11,6 +11,6 @@ impl Url {
         let url = url_split[1];
         assert_eq!(scheme, "http");
 
-        return Url {}
+        return Url {scheme: scheme.to_string() }
     }
 }
