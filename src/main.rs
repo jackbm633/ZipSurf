@@ -6,7 +6,7 @@ mod url;
 
 /// Strips HTML tags from a string and prints the remaining text to the console.
 ///
-/// This function implements a basic state-machine parser that toggles printing 
+/// This function implements a basic state-machine parser that toggles printing
 /// based on whether the current character is inside an HTML tag.
 ///
 /// # Arguments
@@ -45,7 +45,7 @@ fn show_text_without_tags(body: &str) {
 /// * `url` - A validated [`Url`] struct ready to perform a request.
 ///
 /// # Note
-/// This function consumes the `Url` object. If you need to reuse the URL after 
+/// This function consumes the `Url` object. If you need to reuse the URL after
 /// loading, you should modify the signature to take a reference (`&Url`).
 fn load(url: Url) {
     match url.request() {

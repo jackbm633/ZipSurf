@@ -1,10 +1,15 @@
-use std::{collections::HashMap, io::{BufRead, BufReader, Read, Write}, net::TcpStream, fmt::Debug};
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    io::{BufRead, BufReader, Read, Write},
+    net::TcpStream,
+};
 
 use native_tls::TlsConnector;
 
 /// Represents a decomposed HTTP URL.
-/// 
-/// This structure holds the individual components of a URL after it has been 
+///
+/// This structure holds the individual components of a URL after it has been
 /// validated and parsed by the [`Url::new`] constructor.
 pub struct Url {
     /// The protocol used (currently limited to "http").
@@ -47,37 +52,37 @@ impl Url {
         if scheme != "http" && scheme != "https" {
             return Err(format!("Unsupported URL scheme: {}", scheme));
         }
-        
+
         // Now, we separate the host from the path. The host comes before the first /,
         // and the path is everything after it.
-        if !url_remaining.contains("/")
-        {
+        if !url_remaining.contains("/") {
             url_remaining.push('/');
         }
 
         let host_path = url_remaining.splitn(2, "/").collect::<Vec<_>>();
         let host = host_path[0];
-        let path = "/".to_owned() +  if host_path.len() > 1  {host_path[1]} else {""};
+        let path = "/".to_owned()
+            + if host_path.len() > 1 {
+                host_path[1]
+            } else {
+                ""
+            };
 
-
-
-        Ok(
-            Url {
-                scheme: scheme.to_string(),
-                host: host.to_string(),
-                path: path,
-                port: if scheme == "http" {80} else {443}
-            }
-        )
+        Ok(Url {
+            scheme: scheme.to_string(),
+            host: host.to_string(),
+            path: path,
+            port: if scheme == "http" { 80 } else { 443 },
+        })
     }
 
     /// Executes a secure or insecure HTTP GET request based on the URL scheme.
     ///
     /// This method handles protocol negotiation:
     /// 1. **Transport Layer**: Establishes a raw TCP connection.
-    /// 2. **Security Layer**: If the scheme is `https`, it performs a TLS handshake 
+    /// 2. **Security Layer**: If the scheme is `https`, it performs a TLS handshake
     ///    to encrypt the session.
-    /// 3. **Abstraction**: Uses a trait object (`Box<dyn ReadWrite>`) to handle 
+    /// 3. **Abstraction**: Uses a trait object (`Box<dyn ReadWrite>`) to handle
     ///    both encrypted and unencrypted streams interchangeably.
     /// 4. **HTTP Transaction**: Sends the GET request and parses the response.
     ///
@@ -87,18 +92,16 @@ impl Url {
     pub fn request(&self) -> Result<String, String> {
         // Connect to the host on port 80
         if let Ok(tcp_stream) = TcpStream::connect(format!("{}:{}", self.host, self.port)) {
-
             let mut stream: Box<dyn ReadWrite> = if self.scheme == "https" {
                 let connector = TlsConnector::new()
                     .map_err(|e| format!("Failed to create TLS connector: {}", e))?;
-                let tls_stream = connector.connect(&self.host, tcp_stream)
+                let tls_stream = connector
+                    .connect(&self.host, tcp_stream)
                     .map_err(|e| format!("Failed to establish TLS connection: {}", e))?;
                 Box::new(tls_stream)
             } else {
                 Box::new(tcp_stream)
             };
-
-
 
             let request = format!("GET {} HTTP/1.0\r\nHost: {}\r\n\r\n", self.path, self.host);
             let request_result = stream.write_all(request.as_bytes());
@@ -106,33 +109,36 @@ impl Url {
                 return Err(format!("Failed to send request: {}", e));
             }
 
-            let mut reader: BufReader<Box<dyn ReadWrite>> = BufReader::new(stream); 
+            let mut reader: BufReader<Box<dyn ReadWrite>> = BufReader::new(stream);
 
             let mut status_line = String::new();
-            reader.read_line(&mut status_line).map_err(
-                |e| format!("Failed to read response: {}", e))?;
+            reader
+                .read_line(&mut status_line)
+                .map_err(|e| format!("Failed to read response: {}", e))?;
             let status_parts: Vec<&str> = status_line.splitn(3, ' ').collect();
             if status_parts.len() < 3 {
                 return Err("Malformed HTTP response".to_string());
             }
 
-            let version = status_parts[0];
-            let status_code = status_parts[1];
-            let status_text = status_parts[2].trim_end();
+            let _version = status_parts[0];
+            let _status_code = status_parts[1];
+            let _status_text = status_parts[2].trim_end();
 
             // Read the response headers.
             let mut response_headers: HashMap<String, String> = HashMap::new();
-            
+
             loop {
                 let mut header_line = String::new();
-                reader.read_line(&mut header_line).map_err(
-                    |e| format!("Failed to read header line: {}", e))?;
+                reader
+                    .read_line(&mut header_line)
+                    .map_err(|e| format!("Failed to read header line: {}", e))?;
                 header_line = header_line.to_owned().trim_end().to_string();
                 if header_line.is_empty() {
                     break; // End of headers
                 }
                 if let Some((key, value)) = header_line.split_once(":") {
-                    response_headers.insert(key.to_lowercase().to_string(), value.trim().to_string());
+                    response_headers
+                        .insert(key.to_lowercase().to_string(), value.trim().to_string());
                 }
             }
             // Read the remainder of the response body.
@@ -143,9 +149,10 @@ impl Url {
             }
 
             let mut buf = String::new();
-            reader.read_to_string(&mut buf).map_err(|error| error.to_string())?;
+            reader
+                .read_to_string(&mut buf)
+                .map_err(|error| error.to_string())?;
 
-            
             Ok(buf)
         } else {
             Err(format!("Failed to connect to host {}", self.host).to_string())
