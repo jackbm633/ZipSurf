@@ -1,4 +1,4 @@
-use std::net::TcpStream;
+use std::{io::Write, net::TcpStream};
 
 /// Represents a decomposed HTTP URL.
 /// 
@@ -76,29 +76,28 @@ impl Url {
         )
     }
 
-    /// Attempts to establish a TCP connection to the URL's host.
+    /// Establishes a connection and sends a minimal HTTP/1.0 GET request.
     ///
-    /// This method targets port 80, which is the standard port for unencrypted 
-    /// HTTP traffic. It currently serves as a connectivity check before 
-    /// any data is transmitted.
+    /// This method performs the following steps:
+    /// 1. Opens a TCP connection to the host on port 80.
+    /// 2. Formats an HTTP GET request line and the required `Host` header.
+    /// 3. Writes the request bytes to the network stream.
     ///
     /// # Returns
+    /// * `Ok(())` - If the connection was established and the request was successfully sent.
+    /// * `Err(String)` - If connection fails or the write operation is interrupted.
     ///
-    /// * `Ok(())` - If a connection was successfully established.
-    /// * `Err(String)` - If the connection failed (e.g., DNS resolution failure, 
-    ///   timeout, or server refusal).
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let url = Url::new("[http://example.com](http://example.com)").unwrap();
-    /// if let Err(e) = url.request() {
-    ///     println!("Connection failed: {}", e);
-    /// }
-    /// ```
+    /// # Protocol Details
+    /// This uses the `HTTP/1.0` version, which is simpler for basic implementations 
+    /// as it typically closes the connection after a single request/response cycle.
     pub fn request(&self) -> Result<(), String> {
         // Connect to the host on port 80
-        if let Ok(stream) = TcpStream::connect(format!("{}:80", self.host)) {
+        if let Ok(mut stream) = TcpStream::connect(format!("{}:80", self.host)) {
+            let request = format!("GET {} HTTP/1.0\r\nHost: {}\r\n\r\n", self.path, self.host);
+            let request_result = stream.write_all(request.as_bytes());
+            if let Err(e) = request_result {
+                return Err(format!("Failed to send request: {}", e));
+            }
             Ok(())
         } else {
             Err(format!("Failed to connect to host {}", self.host).to_string())
