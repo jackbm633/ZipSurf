@@ -1,3 +1,5 @@
+use crate::url::Url;
+
 mod url;
 
 /// Strips HTML tags from a string and prints the remaining text to the console.
@@ -31,7 +33,29 @@ fn show_text_without_tags(body: &str) {
     }
     println!();
 }
+/// High-level orchestrator that fetches a URL and renders its text content.
+///
+/// This function handles the result of the network request:
+/// - On success: Passes the response body to the tag-stripping renderer.
+/// - On failure: Prints a formatted error message to the standard error stream.
+///
+/// # Arguments
+/// * `url` - A validated [`Url`] struct ready to perform a request.
+///
+/// # Note
+/// This function consumes the `Url` object. If you need to reuse the URL after 
+/// loading, you should modify the signature to take a reference (`&Url`).
+fn load(url: Url) {
+    match url.request() {
+        Ok(body) => {
+            show_text_without_tags(&body);
+        }
+        Err(e) => {
+            eprintln!("Error loading URL: {}", e);
+        }
+    }
+}
 
 fn main() {
-    println!("Hello, world!");
+    load(Url::new("http://example.org").unwrap());
 }
