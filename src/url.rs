@@ -1,4 +1,4 @@
-use std::{io::{BufRead, BufReader, Write}, net::TcpStream};
+use std::{collections::HashMap, io::{BufRead, BufReader, Read, Write}, net::TcpStream};
 
 /// Represents a decomposed HTTP URL.
 /// 
@@ -76,18 +76,20 @@ impl Url {
         )
     }
 
-    /// Sends an HTTP GET request and parses the server's status response.
+    /// Executes a full HTTP GET request and returns the response body.
     ///
-    /// This method handles the initial handshake of the HTTP protocol:
-    /// 1. Transmits the request over TCP.
-    /// 2. Reads the first line of the response (the Status Line).
-    /// 3. Validates the status line format (e.g., "HTTP/1.0 200 OK").
+    /// This method handles the complete lifecycle of an HTTP/1.0 request:
+    /// 1. **Connection**: Establishes a TCP link to port 80.
+    /// 2. **Transmission**: Sends a formatted GET request.
+    /// 3. **Status & Header Parsing**: Validates the server response and maps headers.
+    /// 4. **Safety Check**: Rejects encoded or chunked transfer formats that 
+    ///    require complex decompression/reassembly.
+    /// 5. **Body Extraction**: Reads all remaining data from the stream into a String.
     ///
     /// # Returns
-    /// * `Ok(())` - If the request was sent and a valid HTTP status line was received.
-    /// * `Err(String)` - If the connection fails, the request fails to send, 
-    ///   or the server returns a malformed response.
-    pub fn request(&self) -> Result<(), String> {
+    /// * `Ok(String)` - The raw text/HTML content of the requested page.
+    /// * `Err(String)` - If a network error occurs, or if the server uses unsupported encodings.
+    pub fn request(&self) -> Result<String, String> {
         // Connect to the host on port 80
         if let Ok(mut stream) = TcpStream::connect(format!("{}:80", self.host)) {
             // Clone the stream and create a buffered reader for it to read the response later
@@ -112,8 +114,33 @@ impl Url {
             let status_code = status_parts[1];
             let status_text = status_parts[2].trim_end();
 
+            // Read the response headers.
+            let mut response_headers: HashMap<String, String> = HashMap::new();
+            
+            loop {
+                let mut header_line = String::new();
+                reader.read_line(&mut header_line).map_err(
+                    |e| format!("Failed to read header line: {}", e))?;
+                header_line = header_line.to_owned().trim_end().to_string();
+                if header_line.is_empty() {
+                    break; // End of headers
+                }
+                if let Some((key, value)) = header_line.split_once(":") {
+                    response_headers.insert(key.to_lowercase().to_string(), value.trim().to_string());
+                }
+            }
+            // Read the remainder of the response body.
+            if response_headers.contains_key("transfer-encoding")
+                || response_headers.contains_key("content-encoding")
+            {
+                return Err("Unsupported transfer or content encoding".to_string());
+            }
 
-            Ok(())
+            let mut buf = String::new();
+            reader.read_to_string(&mut buf).map_err(|error| error.to_string())?;
+
+            
+            Ok(buf)
         } else {
             Err(format!("Failed to connect to host {}", self.host).to_string())
         }
