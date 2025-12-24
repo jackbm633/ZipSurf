@@ -1,4 +1,4 @@
-use std::{io::{BufReader, Write}, net::TcpStream};
+use std::{io::{BufRead, BufReader, Write}, net::TcpStream};
 
 /// Represents a decomposed HTTP URL.
 /// 
@@ -76,19 +76,17 @@ impl Url {
         )
     }
 
-    /// Connects to the host, sends an HTTP GET request, and prepares a response reader.
+    /// Sends an HTTP GET request and parses the server's status response.
     ///
-    /// This implementation clones the TCP stream to allow for simultaneous 
-    /// reading and writing (though currently, it only performs the write).
+    /// This method handles the initial handshake of the HTTP protocol:
+    /// 1. Transmits the request over TCP.
+    /// 2. Reads the first line of the response (the Status Line).
+    /// 3. Validates the status line format (e.g., "HTTP/1.0 200 OK").
     ///
     /// # Returns
-    /// * `Ok(())` - If the connection, stream cloning, and request transmission succeed.
-    /// * `Err(String)` - If any step of the network IO fails.
-    ///
-    /// # Technical Note
-    /// A `BufReader` is initialized with a clone of the stream. This is more efficient 
-    /// than raw reads because it reduces the number of system calls by buffering 
-    /// chunks of the server's response in memory.
+    /// * `Ok(())` - If the request was sent and a valid HTTP status line was received.
+    /// * `Err(String)` - If the connection fails, the request fails to send, 
+    ///   or the server returns a malformed response.
     pub fn request(&self) -> Result<(), String> {
         // Connect to the host on port 80
         if let Ok(mut stream) = TcpStream::connect(format!("{}:80", self.host)) {
@@ -101,6 +99,19 @@ impl Url {
             if let Err(e) = request_result {
                 return Err(format!("Failed to send request: {}", e));
             }
+
+            let mut status_line = String::new();
+            reader.read_line(&mut status_line).map_err(
+                |e| format!("Failed to read response: {}", e))?;
+            let status_parts: Vec<&str> = status_line.splitn(3, ' ').collect();
+            if status_parts.len() < 3 {
+                return Err("Malformed HTTP response".to_string());
+            }
+
+            let version = status_parts[0];
+            let status_code = status_parts[1];
+            let status_text = status_parts[2].trim_end();
+
 
             Ok(())
         } else {
