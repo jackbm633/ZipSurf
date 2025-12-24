@@ -1,3 +1,5 @@
+use std::net::TcpStream;
+
 /// Represents a decomposed HTTP URL.
 /// 
 /// This structure holds the individual components of a URL after it has been 
@@ -72,5 +74,34 @@ impl Url {
                 path: path
             }
         )
+    }
+
+    /// Attempts to establish a TCP connection to the URL's host.
+    ///
+    /// This method targets port 80, which is the standard port for unencrypted 
+    /// HTTP traffic. It currently serves as a connectivity check before 
+    /// any data is transmitted.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` - If a connection was successfully established.
+    /// * `Err(String)` - If the connection failed (e.g., DNS resolution failure, 
+    ///   timeout, or server refusal).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let url = Url::new("[http://example.com](http://example.com)").unwrap();
+    /// if let Err(e) = url.request() {
+    ///     println!("Connection failed: {}", e);
+    /// }
+    /// ```
+    pub fn request(&self) -> Result<(), String> {
+        // Connect to the host on port 80
+        if let Ok(stream) = TcpStream::connect(format!("{}:80", self.host)) {
+            Ok(())
+        } else {
+            Err(format!("Failed to connect to host {}", self.host).to_string())
+        }
     }
 }
