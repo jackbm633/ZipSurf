@@ -23,23 +23,18 @@ pub struct Url {
 }
 
 impl Url {
-    /// Parses a URL string and initializes a `Url` instance with port defaults.
+    /// Fully parses a URL string into a structured `Url` object.
     ///
-    /// This constructor handles the transition from a raw string to a structured object,
-    /// automatically assigning the standard network port based on the detected scheme.
+    /// This constructor handles scheme validation, host/port separation, 
+    /// and path normalization. It is designed to prepare the data for 
+    /// both TCP connection and HTTP request formatting.
     ///
     /// # Arguments
-    /// * `url` - The URL string to parse (e.g., "https://rust-lang.org/install").
+    /// * `url` - The raw URL string (e.g., "http://localhost:8080/index.html").
     ///
     /// # Returns
-    /// * `Ok(Self)` - A `Url` instance with `scheme`, `host`, `path`, and `port`.
-    /// * `Err(String)` - If the string is malformed or uses an unsupported protocol.
-    ///
-    /// # Default Ports
-    /// | Scheme | Port |
-    /// | :--- | :--- |
-    /// | `http` | 80 |
-    /// | `https` | 443 |
+    /// * `Ok(Self)` - A `Url` instance with a "clean" host and explicit port.
+    /// * `Err(String)` - If the URL is missing protocol separators or has an invalid port.
     pub fn new(url: &str) -> Result<Self, String> {
         // Extract the scheme, which is separated by the URL by ://.
         // Browser currently only supports http so let's check that too.
@@ -70,9 +65,22 @@ impl Url {
 
         Ok(Url {
             scheme: scheme.to_string(),
-            host: host.to_string(),
+            host: if host.contains(':') {
+                host.splitn(2, ':').collect::<Vec<_>>()[0].to_string()
+            } else {
+                host.to_string()
+            },
             path: path,
-            port: if scheme == "http" { 80 } else { 443 },
+            port: if host.contains(':') {
+                host.splitn(2, ':')
+                    .collect::<Vec<_>>()[1]
+                    .parse::<u16>()
+                    .map_err(|_| "Invalid port number".to_string())?
+            } else if scheme == "http" {
+                80
+            } else {
+                443
+            },
         })
     }
 
