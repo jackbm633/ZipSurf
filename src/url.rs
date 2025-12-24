@@ -1,4 +1,4 @@
-use std::{io::Write, net::TcpStream};
+use std::{io::{BufReader, Write}, net::TcpStream};
 
 /// Represents a decomposed HTTP URL.
 /// 
@@ -76,28 +76,32 @@ impl Url {
         )
     }
 
-    /// Establishes a connection and sends a minimal HTTP/1.0 GET request.
+    /// Connects to the host, sends an HTTP GET request, and prepares a response reader.
     ///
-    /// This method performs the following steps:
-    /// 1. Opens a TCP connection to the host on port 80.
-    /// 2. Formats an HTTP GET request line and the required `Host` header.
-    /// 3. Writes the request bytes to the network stream.
+    /// This implementation clones the TCP stream to allow for simultaneous 
+    /// reading and writing (though currently, it only performs the write).
     ///
     /// # Returns
-    /// * `Ok(())` - If the connection was established and the request was successfully sent.
-    /// * `Err(String)` - If connection fails or the write operation is interrupted.
+    /// * `Ok(())` - If the connection, stream cloning, and request transmission succeed.
+    /// * `Err(String)` - If any step of the network IO fails.
     ///
-    /// # Protocol Details
-    /// This uses the `HTTP/1.0` version, which is simpler for basic implementations 
-    /// as it typically closes the connection after a single request/response cycle.
+    /// # Technical Note
+    /// A `BufReader` is initialized with a clone of the stream. This is more efficient 
+    /// than raw reads because it reduces the number of system calls by buffering 
+    /// chunks of the server's response in memory.
     pub fn request(&self) -> Result<(), String> {
         // Connect to the host on port 80
         if let Ok(mut stream) = TcpStream::connect(format!("{}:80", self.host)) {
+            // Clone the stream and create a buffered reader for it to read the response later
+            let clone_stream = stream.try_clone().map_err(
+                |e| format!("Failed to clone stream: {}", e))?;
+            let mut reader = BufReader::new(clone_stream); 
             let request = format!("GET {} HTTP/1.0\r\nHost: {}\r\n\r\n", self.path, self.host);
             let request_result = stream.write_all(request.as_bytes());
             if let Err(e) = request_result {
                 return Err(format!("Failed to send request: {}", e));
             }
+
             Ok(())
         } else {
             Err(format!("Failed to connect to host {}", self.host).to_string())
