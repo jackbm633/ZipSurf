@@ -1,3 +1,5 @@
+use std::env::args;
+
 use crate::url::Url;
 
 mod url;
@@ -57,5 +59,6 @@ fn load(url: Url) {
 }
 
 fn main() {
-    load(Url::new("http://example.org").unwrap());
+    let url = args().skip(1).next().expect("No URL provided.");
+    load(Url::new(&url).unwrap());
 }
