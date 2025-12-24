@@ -11,36 +11,28 @@ pub struct Url {
     pub host: String,
     /// The resource location on the server (the part following the first forward slash).
     pub path: String,
+    /// The port number for the connection (default is 80 for HTTP).
+    pub port: u16,
 }
 
 impl Url {
-    /// Creates a new `Url` instance by parsing a string slice.
+    /// Parses a URL string and initializes a `Url` instance with port defaults.
     ///
-    /// This parser decomposes a URL into three parts: scheme, host, and path.
-    /// Currently, it only supports the `http` scheme.
+    /// This constructor handles the transition from a raw string to a structured object,
+    /// automatically assigning the standard network port based on the detected scheme.
     ///
     /// # Arguments
-    ///
-    /// * `url` - A string slice containing the URL to be parsed (e.g., "http://example.com/index.html").
+    /// * `url` - The URL string to parse (e.g., "https://rust-lang.org/install").
     ///
     /// # Returns
+    /// * `Ok(Self)` - A `Url` instance with `scheme`, `host`, `path`, and `port`.
+    /// * `Err(String)` - If the string is malformed or uses an unsupported protocol.
     ///
-    /// * `Ok(Self)` - A `Url` struct containing the parsed components.
-    /// * `Err(String)` - An error message if the URL format is invalid or the scheme is unsupported.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if:
-    /// 1. The string does not contain the `://` separator.
-    /// 2. The scheme is anything other than `http`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let my_url = Url::new("[http://google.com/search](http://google.com/search)").unwrap();
-    /// assert_eq!(my_url.host, "google.com");
-    /// assert_eq!(my_url.path, "/search");
-    /// ```
+    /// # Default Ports
+    /// | Scheme | Port |
+    /// | :--- | :--- |
+    /// | `http` | 80 |
+    /// | `https` | 443 |
     pub fn new(url: &str) -> Result<Self, String> {
         // Extract the scheme, which is separated by the URL by ://.
         // Browser currently only supports http so let's check that too.
@@ -50,7 +42,7 @@ impl Url {
         }
         let scheme = url_split[0];
         let mut url_remaining: String = url_split[1].to_string();
-        if scheme != "http" {
+        if scheme != "http" && scheme != "https" {
             return Err(format!("Unsupported URL scheme: {}", scheme));
         }
         
@@ -71,7 +63,8 @@ impl Url {
             Url {
                 scheme: scheme.to_string(),
                 host: host.to_string(),
-                path: path
+                path: path,
+                port: if scheme == "http" {80} else {443}
             }
         )
     }
