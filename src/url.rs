@@ -69,22 +69,23 @@ impl Url {
         )
     }
 
-    /// Executes a full HTTP GET request and returns the response body.
+    /// Executes an HTTP GET request using the struct's specific host and port.
     ///
-    /// This method handles the complete lifecycle of an HTTP/1.0 request:
-    /// 1. **Connection**: Establishes a TCP link to port 80.
-    /// 2. **Transmission**: Sends a formatted GET request.
-    /// 3. **Status & Header Parsing**: Validates the server response and maps headers.
-    /// 4. **Safety Check**: Rejects encoded or chunked transfer formats that 
-    ///    require complex decompression/reassembly.
-    /// 5. **Body Extraction**: Reads all remaining data from the stream into a String.
+    /// This method handles the low-level socket communication required to fetch 
+    /// web content. It supports standard HTTP/1.0 communication over any port 
+    /// specified in the `Url` struct (typically 80 for HTTP or 443 for HTTPS).
     ///
     /// # Returns
-    /// * `Ok(String)` - The raw text/HTML content of the requested page.
-    /// * `Err(String)` - If a network error occurs, or if the server uses unsupported encodings.
+    /// * `Ok(String)` - The full response body as a UTF-8 string.
+    /// * `Err(String)` - A descriptive error if connection, transmission, or 
+    ///   parsing fails.
+    ///
+    /// # Constraints
+    /// - Does not currently support encrypted TLS handshakes (required for HTTPS).
+    /// - Does not support compressed content (Gzip/Brotli) or chunked transfers.
     pub fn request(&self) -> Result<String, String> {
         // Connect to the host on port 80
-        if let Ok(mut stream) = TcpStream::connect(format!("{}:80", self.host)) {
+        if let Ok(mut stream) = TcpStream::connect(format!("{}:{}", self.host, self.port)) {
             // Clone the stream and create a buffered reader for it to read the response later
             let clone_stream = stream.try_clone().map_err(
                 |e| format!("Failed to clone stream: {}", e))?;
