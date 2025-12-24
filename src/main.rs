@@ -1,8 +1,10 @@
 use std::env::args;
 
-use crate::url::Url;
+
+use crate::{url::Url};
 
 mod url;
+mod browser;
 
 /// Strips HTML tags from a string and prints the remaining text to the console.
 ///
@@ -58,7 +60,13 @@ fn load(url: Url) {
     }
 }
 
-fn main() {
+fn main() -> eframe::Result<(), eframe::Error> {
     let url = args().skip(1).next().expect("No URL provided.");
     load(Url::new(&url).unwrap());
+
+    eframe::run_native(
+        "ZipSurf Browser",
+        eframe::NativeOptions::default(),
+        Box::new(|cc| Ok(Box::new(browser::Browser::new(cc)))),
+    )
 }
