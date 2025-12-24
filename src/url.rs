@@ -1,4 +1,6 @@
-use std::{collections::HashMap, io::{BufRead, BufReader, Read, Write}, net::TcpStream};
+use std::{collections::HashMap, io::{BufRead, BufReader, Read, Write}, net::TcpStream, fmt::Debug};
+
+use native_tls::TlsConnector;
 
 /// Represents a decomposed HTTP URL.
 /// 
@@ -69,32 +71,42 @@ impl Url {
         )
     }
 
-    /// Executes an HTTP GET request using the struct's specific host and port.
+    /// Executes a secure or insecure HTTP GET request based on the URL scheme.
     ///
-    /// This method handles the low-level socket communication required to fetch 
-    /// web content. It supports standard HTTP/1.0 communication over any port 
-    /// specified in the `Url` struct (typically 80 for HTTP or 443 for HTTPS).
+    /// This method handles protocol negotiation:
+    /// 1. **Transport Layer**: Establishes a raw TCP connection.
+    /// 2. **Security Layer**: If the scheme is `https`, it performs a TLS handshake 
+    ///    to encrypt the session.
+    /// 3. **Abstraction**: Uses a trait object (`Box<dyn ReadWrite>`) to handle 
+    ///    both encrypted and unencrypted streams interchangeably.
+    /// 4. **HTTP Transaction**: Sends the GET request and parses the response.
     ///
     /// # Returns
-    /// * `Ok(String)` - The full response body as a UTF-8 string.
-    /// * `Err(String)` - A descriptive error if connection, transmission, or 
-    ///   parsing fails.
-    ///
-    /// # Constraints
-    /// - Does not currently support encrypted TLS handshakes (required for HTTPS).
-    /// - Does not support compressed content (Gzip/Brotli) or chunked transfers.
+    /// * `Ok(String)` - The decrypted response body.
+    /// * `Err(String)` - If the connection, TLS handshake, or parsing fails.
     pub fn request(&self) -> Result<String, String> {
         // Connect to the host on port 80
-        if let Ok(mut stream) = TcpStream::connect(format!("{}:{}", self.host, self.port)) {
-            // Clone the stream and create a buffered reader for it to read the response later
-            let clone_stream = stream.try_clone().map_err(
-                |e| format!("Failed to clone stream: {}", e))?;
-            let mut reader = BufReader::new(clone_stream); 
+        if let Ok(tcp_stream) = TcpStream::connect(format!("{}:{}", self.host, self.port)) {
+
+            let mut stream: Box<dyn ReadWrite> = if self.scheme == "https" {
+                let connector = TlsConnector::new()
+                    .map_err(|e| format!("Failed to create TLS connector: {}", e))?;
+                let tls_stream = connector.connect(&self.host, tcp_stream)
+                    .map_err(|e| format!("Failed to establish TLS connection: {}", e))?;
+                Box::new(tls_stream)
+            } else {
+                Box::new(tcp_stream)
+            };
+
+
+
             let request = format!("GET {} HTTP/1.0\r\nHost: {}\r\n\r\n", self.path, self.host);
             let request_result = stream.write_all(request.as_bytes());
             if let Err(e) = request_result {
                 return Err(format!("Failed to send request: {}", e));
             }
+
+            let mut reader: BufReader<Box<dyn ReadWrite>> = BufReader::new(stream); 
 
             let mut status_line = String::new();
             reader.read_line(&mut status_line).map_err(
@@ -140,3 +152,6 @@ impl Url {
         }
     }
 }
+
+trait ReadWrite: Read + Write + Debug {}
+impl<T: Read + Write + Debug> ReadWrite for T {}
