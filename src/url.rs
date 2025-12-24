@@ -1,66 +1,76 @@
-/// ```rust
-/// A struct representing a URL with its scheme (protocol).
-///
-/// `Url` is used to store and represent the scheme (e.g., "http", "https", "ftp")
-/// component of a URL. Additional components of a URL can be included by extending
-/// this struct with more fields.
-///
-/// # Fields
-/// - `scheme` (`String`): The scheme or protocol of the URL (e.g., "http", "https").
-///
-/// # Examples
-///
-/// ```rust
-/// let url = Url {
-///     scheme: String::from("https"),
-/// };
-/// println!("Scheme: {}", url.scheme); // Output: Scheme: https
-/// ```
-/// ```
-struct Url {
-    scheme: String
+/// Represents a decomposed HTTP URL.
+/// 
+/// This structure holds the individual components of a URL after it has been 
+/// validated and parsed by the [`Url::new`] constructor.
+pub struct Url {
+    /// The protocol used (currently limited to "http").
+    pub scheme: String,
+    /// The domain name or IP address of the server.
+    pub host: String,
+    /// The resource location on the server (the part following the first forward slash).
+    pub path: String,
 }
 
 impl Url {
-    /// ```rust
-    /// Creates a new `Url` instance from the given URL string.
+    /// Creates a new `Url` instance by parsing a string slice.
     ///
-    /// This function parses the given URL to extract its scheme and validates
-    /// that the scheme is `"http"`. If the scheme is not `"http"`, the function
-    /// will panic.
+    /// This parser decomposes a URL into three parts: scheme, host, and path.
+    /// Currently, it only supports the `http` scheme.
     ///
     /// # Arguments
     ///
-    /// * `url` - A string slice representing the URL to be parsed. The URL provided
-    ///           must include the scheme (e.g., `"http://example.com"`).
+    /// * `url` - A string slice containing the URL to be parsed (e.g., "http://example.com/index.html").
     ///
     /// # Returns
     ///
-    /// Returns a new `Url` instance with the extracted scheme.
+    /// * `Ok(Self)` - A `Url` struct containing the parsed components.
+    /// * `Err(String)` - An error message if the URL format is invalid or the scheme is unsupported.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// This function will panic if:
-    /// * The input `url` does not contain a valid scheme separated by `"://"`.
-    /// * The extracted scheme is not `"http"`.
+    /// This function will return an error if:
+    /// 1. The string does not contain the `://` separator.
+    /// 2. The scheme is anything other than `http`.
     ///
     /// # Examples
     ///
     /// ```
-    /// let url = Url::new("http://example.com");
-    /// assert_eq!(url.scheme, "http".to_string());
+    /// let my_url = Url::new("[http://google.com/search](http://google.com/search)").unwrap();
+    /// assert_eq!(my_url.host, "google.com");
+    /// assert_eq!(my_url.path, "/search");
     /// ```
-    ///
-    /// Note: This function currently assumes only HTTP URLs are supported.
-    /// ```
-    fn new(url: &str) -> Self {
+    pub fn new(url: &str) -> Result<Self, String> {
         // Extract the scheme, which is separated by the URL by ://.
         // Browser currently only supports http so let's check that too.
         let url_split = url.splitn(2, "://").collect::<Vec<_>>();
+        if url_split.len() != 2 {
+            return Err("URL missing :// separator".to_string());
+        }
         let scheme = url_split[0];
-        let url = url_split[1];
-        assert_eq!(scheme, "http");
+        let mut url_remaining: String = url_split[1].to_string();
+        if scheme != "http" {
+            return Err(format!("Unsupported URL scheme: {}", scheme));
+        }
+        
+        // Now, we separate the host from the path. The host comes before the first /,
+        // and the path is everything after it.
+        if !url_remaining.contains("/")
+        {
+            url_remaining.push('/');
+        }
 
-        return Url {scheme: scheme.to_string() }
+        let host_path = url_remaining.splitn(2, "/").collect::<Vec<_>>();
+        let host = host_path[0];
+        let path = "/".to_owned() +  if host_path.len() > 1  {host_path[1]} else {""};
+
+
+
+        Ok(
+            Url {
+                scheme: scheme.to_string(),
+                host: host.to_string(),
+                path: path
+            }
+        )
     }
 }
