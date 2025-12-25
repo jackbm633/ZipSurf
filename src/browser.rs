@@ -11,17 +11,20 @@ use crate::url::Url;
 /// history, or scroll positions.
 pub struct Browser {
     texts: Vec<Text>,
+    scroll_y: f32,
 }
 
 const HSTEP: f32 = 13.0;
 const VSTEP: f32 = 17.0;
 const WIDTH: f32 = 800.0;
+const SCROLL_STEP: f32 = 100.0;
 
 impl Default for Browser {
     /// Provides the default state for the Browser.
     fn default() -> Self {
         Browser {
             texts: Vec::new(),
+            scroll_y: 0.0
         }
     }
 }
@@ -69,25 +72,45 @@ impl Browser {
     pub fn load(&mut self, url: Url) {
         match url.request() {
             Ok(body) => {
-                let mut cursor_x = HSTEP;
-                let mut cursor_y = VSTEP;
-                let text = Browser::lex(body);
-                for c in text.chars() {
-                    self.texts.push(Text {
-                        content: c.to_string(),
-                        x: cursor_x,
-                        y: cursor_y,
-                    });
-                    if cursor_x + HSTEP > WIDTH {
-                        cursor_x = HSTEP;
-                        cursor_y += VSTEP;
-                    } else {
-                        cursor_x += HSTEP;
-                    }
-                }
+                self.layout(body);
             }
             Err(e) => {
                 eprintln!("Error loading URL: {}", e);
+            }
+        }
+    }
+
+    /// Processes a string and calculates the 2D layout for each character.
+    ///
+    /// This function performs a simplified "reflow" logic:
+    /// 1. It sanitizes the input using `Browser::lex`.
+    /// 2. It iterates through characters, assigning each a coordinate based on 
+    ///    horizontal (`HSTEP`) and vertical (`VSTEP`) increments.
+    /// 3. It automatically handles line wrapping when the `cursor_x` exceeds the `WIDTH`.
+    ///
+    /// # Arguments
+    /// * `body` - The raw string (likely HTML) to be laid out.
+    ///
+    /// # Layout Rules
+    /// * **Initial Position:** Starts at `(HSTEP, VSTEP)`.
+    /// * **Wrapping:** If the next character would exceed `WIDTH`, `cursor_x` resets 
+    ///   to `HSTEP` and `cursor_y` increments by `VSTEP`.
+    /// * **Spacing:** Every character is treated as having a fixed width of `HSTEP`.
+    fn layout(&mut self, body: String) {
+        let mut cursor_x = HSTEP;
+        let mut cursor_y = VSTEP;
+        let text = Browser::lex(body);
+        for c in text.chars() {
+            self.texts.push(Text {
+                content: c.to_string(),
+                x: cursor_x,
+                y: cursor_y,
+            });
+            if cursor_x + HSTEP > WIDTH {
+                cursor_x = HSTEP;
+                cursor_y += VSTEP;
+            } else {
+                cursor_x += HSTEP;
             }
         }
     }
@@ -176,13 +199,19 @@ impl eframe::App for Browser {
     ///   to the top-left corner of the character.
     /// * **Styling:** Renders text in a 16pt Proportional font in Black.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+
+        if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown))
+        {
+            self.scroll_y += SCROLL_STEP;
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| {
             // The painter allows direct 2D drawing onto the UI layer.
             let painter = ui.painter();
 
             for text in &self.texts {
                 painter.text(
-                    Pos2::new(text.x, text.y), 
+                    Pos2::new(text.x, text.y - self.scroll_y), 
                     Align2::CENTER_CENTER, 
                     &text.content, 
                     FontId::proportional(13.0), 
