@@ -62,11 +62,20 @@ fn load(url: Url) {
 
 fn main() -> eframe::Result<(), eframe::Error> {
     let url = args().skip(1).next().expect("No URL provided.");
-    load(Url::new(&url).unwrap());
 
+    let window_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size(egui::vec2(800.0, 600.0)),
+        ..Default::default()
+    };
     eframe::run_native(
         "ZipSurf Browser",
-        eframe::NativeOptions::default(),
-        Box::new(|cc| Ok(Box::new(browser::Browser::new(cc)))),
-    )
+        window_options,
+        Box::new(|cc| {
+            let mut browser = browser::Browser::new(cc);
+            browser.load(Url::new(&url).unwrap());
+            Ok(Box::new(browser))
+        }))
+        
+    
 }

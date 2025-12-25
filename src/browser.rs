@@ -1,19 +1,38 @@
+use std::sync::Arc;
+
 use eframe::egui;
-use egui::{Align2, Color32, FontId, Pos2, Rect, Shape, Stroke, StrokeKind, Vec2};
+use egui::{Align2, Color32, FontId, Pos2};
+
+use crate::url::Url;
 
 /// The main application state for the Browser.
 /// 
 /// In a more complex app, this struct would hold data like URLs, 
 /// history, or scroll positions.
-pub struct Browser {}
+pub struct Browser {
+    texts: Vec<Text>,
+}
 
 impl Default for Browser {
     /// Provides the default state for the Browser.
     fn default() -> Self {
-        Browser {}
+        Browser {
+            texts: Vec::new(),
+        }
     }
 }
 
+/// Provides browser functionality for loading and rendering web content.
+///
+/// The `Browser` struct handles URL loading, HTML parsing, and text rendering
+/// with support for custom fonts and visual styling. It manages a collection
+/// of text elements positioned for display in the egui UI framework.
+///
+/// # Features
+/// - URL loading and HTML tag removal via lexing
+/// - Custom font configuration with fallback support
+/// - Light mode visuals for optimal visibility
+/// - Text element management with positioning
 impl Browser {
     /// Configures the initial context and returns a new instance of [`Browser`].
     ///
@@ -22,49 +41,151 @@ impl Browser {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // Enforce light mode so black shapes are visible against the background.
         cc.egui_ctx.set_visuals(egui::Visuals::light());
+        Self::setup_custom_fonts(&cc.egui_ctx);
         Self::default()
+    }
+
+    /// Fetches content from a URL and populates the internal text buffer.
+    ///
+    /// This method performs a network request, strips HTML tags from the response,
+    /// and converts each character into a `Text` struct with a default screen position.
+    ///
+    /// # Arguments
+    /// * `url` - A `Url` object (presumably a custom struct) that provides a `.request()` method.
+    ///
+    /// # Workflow
+    /// 1. Calls `url.request()` to get the raw HTML/body.
+    /// 2. Passes the result to `Browser::lex()` to remove tags.
+    /// 3. Iterates through the sanitized characters.
+    /// 4. Pushes each character into `self.texts` as a `Text` instance.
+    ///
+    /// # Errors
+    /// If the network request fails, an error message is printed to `stderr` 
+    /// via `eprintln!`, and no changes are made to `self.texts`.
+    pub fn load(&mut self, url: Url) {
+        match url.request() {
+            Ok(body) => {
+                let text = Browser::lex(body);
+                for c in text.chars() {
+                    self.texts.push(Text {
+                        content: c.to_string(),
+                        x: 100.0,
+                        y: 100.0,
+                    });
+                }
+            }
+            Err(e) => {
+                eprintln!("Error loading URL: {}", e);
+            }
+        }
+    }
+    /// Removes all HTML/XML-style tags from a given string.
+    ///
+    /// This function iterates through the input `text`, tracking whether the current
+    /// character is inside a tag (between `<` and `>`). It returns a new `String` 
+    /// containing only the text found outside of these markers.
+    ///
+    /// # Arguments
+    /// * `text` - A `String` containing the raw text to be processed.
+    ///
+    /// # Returns
+    /// A `String` with all `<...>` tags removed.
+    ///
+    /// # Example
+    /// ```
+    /// let input = String::from("<p>Hello, <b>world</b>!</p>");
+    /// let result = lex(input);
+    /// assert_eq!(result, "Hello, world!");
+    /// ```
+    pub fn lex(text: String) -> String {
+        let mut output = String::new();
+        let mut in_tag = false;
+        let mut chars = text.chars();
+        while let Some(c) = chars.next() {
+            match c {
+                '<' => in_tag = true,
+                '>' => in_tag = false,
+                _ if !in_tag => output.push(c),
+                _ => {}
+            }
+        }
+        output
+    }
+
+    /// Configures custom fonts for the egui context.
+    ///
+    /// This function loads the "Droid Sans Fallback" font from the local assets, 
+    /// registers it with the font manager, and adds it as a fallback for both 
+    /// Proportional and Monospace font families. 
+    ///
+    /// # Behavior
+    /// * **Static Inclusion:** The font file is embedded into the binary at compile time 
+    ///   using `include_bytes!`.
+    /// * **Priority:** The custom font is `.push()`-ed to the end of the font family vectors,
+    ///   meaning it will be used only when characters are missing from the default fonts.
+    ///
+    /// # Arguments
+    /// * `ctx` - A reference to the `egui::Context` where the fonts should be applied.
+    fn setup_custom_fonts(ctx: &egui::Context) {
+        let mut fonts = egui::FontDefinitions::default();
+
+        fonts.font_data.insert(
+            "droid-sans-fallback".to_owned(),
+            Arc::new(egui::FontData::from_static(include_bytes!("../assets/DroidSansFallbackFull.ttf"))),
+        );
+
+        fonts.families.get_mut(&egui::FontFamily::Proportional)
+            .unwrap()
+            .push("droid-sans-fallback".to_owned());
+
+        fonts.families.get_mut(&egui::FontFamily::Monospace)
+            .unwrap()
+            .push("droid-sans-fallback".to_owned());
+
+        ctx.set_fonts(fonts);
     }
 }
 
 impl eframe::App for Browser {
-    /// Called by the framework every frame to draw the UI.
+    /// The main update loop for the application UI.
     ///
-    /// This implementation uses the `painter` to manually render:
-    /// 1. A rectangle outline.
-    /// 2. A circular ellipse.
-    /// 3. A centered text label.
+    /// This function is called every frame by the `eframe` framework. It clears the
+    /// central panel and uses a `Painter` to manually render each character stored
+    /// in the `texts` vector at its specified coordinates.
+    ///
+    /// # Arguments
+    /// * `ctx` - The egui context, used to handle input and layout.
+    /// * `_frame` - The eframe frame, used for integration with the native window (unused).
+    ///
+    /// # Drawing Logic
+    /// * **Painter:** Accesses the low-level 2D drawing API.
+    /// * **Positioning:** Uses `text.x` and `text.y` to determine the screen location.
+    /// * **Alignment:** Uses `Align2::LEFT_TOP`, meaning the (x, y) coordinate refers 
+    ///   to the top-left corner of the character.
+    /// * **Styling:** Renders text in a 16pt Proportional font in Black.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             // The painter allows direct 2D drawing onto the UI layer.
             let painter = ui.painter();
 
-            // Draw a rectangle (Equivalent to Tkinter's canvas.create_rectangle)
-            // Coordinates: top-left (10, 20), bottom-right (400, 300)
-            let my_rect = Rect::from_min_max(Pos2::new(10.0, 20.0), Pos2::new(400.0, 300.0));
-            painter.add(Shape::rect_stroke(
-                my_rect,
-                0.0, // Corner rounding (0.0 = sharp corners)
-                Stroke::new(1.0, Color32::BLACK),
-                StrokeKind::Middle
-            ));
-
-            // Draw an ellipse (Equivalent to Tkinter's canvas.create_oval)
-            // Parameters: Center (125, 125), Radius (25x25), Stroke style
-            painter.add(Shape::ellipse_stroke(
-                Pos2::new(125.0, 125.0), 
-                Vec2::new(25.0, 25.0), 
-                Stroke::new(1.0, Color32::BLACK)
-            ));
-
-            // Draw text (Equivalent to Tkinter's canvas.create_text)
-            // Parameters: Position, Alignment (Anchor), String, Font, Color
-            painter.text(
-                Pos2::new(200.0, 150.0), 
-                Align2::CENTER_CENTER, 
-                "Hello, World!", 
-                FontId::proportional(20.0), 
-                Color32::BLACK
-            );
+            for text in &self.texts {
+                painter.text(
+                    Pos2::new(text.x, text.y), 
+                    Align2::LEFT_TOP, 
+                    &text.content, 
+                    FontId::proportional(16.0), 
+                    Color32::BLACK
+                );
+            }
+           
         });
     }
+
+    
+}
+
+struct Text {
+    content: String,
+    x: f32,
+    y: f32
 }
