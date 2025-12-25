@@ -15,6 +15,7 @@ pub struct Browser {
 
 const HSTEP: f32 = 13.0;
 const VSTEP: f32 = 17.0;
+const WIDTH: f32 = 800.0;
 
 impl Default for Browser {
     /// Provides the default state for the Browser.
@@ -69,7 +70,7 @@ impl Browser {
         match url.request() {
             Ok(body) => {
                 let mut cursor_x = HSTEP;
-                let cursor_y = VSTEP;
+                let mut cursor_y = VSTEP;
                 let text = Browser::lex(body);
                 for c in text.chars() {
                     self.texts.push(Text {
@@ -77,7 +78,12 @@ impl Browser {
                         x: cursor_x,
                         y: cursor_y,
                     });
-                    cursor_x += HSTEP;
+                    if cursor_x + HSTEP > WIDTH {
+                        cursor_x = HSTEP;
+                        cursor_y += VSTEP;
+                    } else {
+                        cursor_x += HSTEP;
+                    }
                 }
             }
             Err(e) => {
@@ -177,7 +183,7 @@ impl eframe::App for Browser {
             for text in &self.texts {
                 painter.text(
                     Pos2::new(text.x, text.y), 
-                    Align2::LEFT_TOP, 
+                    Align2::CENTER_CENTER, 
                     &text.content, 
                     FontId::proportional(13.0), 
                     Color32::BLACK
