@@ -13,6 +13,9 @@ pub struct Browser {
     texts: Vec<Text>,
 }
 
+const HSTEP: f32 = 13.0;
+const VSTEP: f32 = 17.0;
+
 impl Default for Browser {
     /// Provides the default state for the Browser.
     fn default() -> Self {
@@ -65,13 +68,16 @@ impl Browser {
     pub fn load(&mut self, url: Url) {
         match url.request() {
             Ok(body) => {
+                let mut cursor_x = HSTEP;
+                let cursor_y = VSTEP;
                 let text = Browser::lex(body);
                 for c in text.chars() {
                     self.texts.push(Text {
                         content: c.to_string(),
-                        x: 100.0,
-                        y: 100.0,
+                        x: cursor_x,
+                        y: cursor_y,
                     });
+                    cursor_x += HSTEP;
                 }
             }
             Err(e) => {
@@ -173,7 +179,7 @@ impl eframe::App for Browser {
                     Pos2::new(text.x, text.y), 
                     Align2::LEFT_TOP, 
                     &text.content, 
-                    FontId::proportional(16.0), 
+                    FontId::proportional(13.0), 
                     Color32::BLACK
                 );
             }
