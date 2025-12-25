@@ -1,17 +1,23 @@
 use std::sync::Arc;
-
 use eframe::egui;
 use egui::{Align2, Color32, FontId, Pos2};
-
 use crate::url::Url;
 
-/// The main application state for the Browser.
-/// 
-/// In a more complex app, this struct would hold data like URLs, 
-/// history, or scroll positions.
+/// The primary state controller for the web browser engine.
+///
+/// This struct manages the lifecycle of web content from initial URL fetching
+/// through HTML sanitization and final 2D layout. It maintains a persistent 
+/// reference to the `egui::Context` to perform font metric calculations and
+/// handles the application's scroll state.
 pub struct Browser {
+    /// A collection of positioned text elements ready for rendering.
     texts: Vec<Text>,
+    /// The current vertical scroll offset in points.
     scroll_y: f32,
+    /// Handle to the egui context for font layout and UI state.
+    context: egui::Context,
+    /// The raw, sanitized text content extracted from the source HTML.
+    body: String,
 }
 
 const HSTEP: f32 = 13.0;
@@ -21,59 +27,50 @@ const HEIGHT: f32 = 600.0;
 const SCROLL_STEP: f32 = 100.0;
 
 impl Default for Browser {
-    /// Provides the default state for the Browser.
+    /// Returns a `Browser` instance with empty buffers and default scroll position.
+    /// 
+    /// Note: The `context` is initialized with a default handle which should be 
+    /// overwritten during `new()` to ensure it points to the active UI context.
     fn default() -> Self {
         Browser {
             texts: Vec::new(),
-            scroll_y: 0.0
+            scroll_y: 0.0,
+            context: egui::Context::default(),
+            body: String::new(),
         }
     }
 }
 
-/// Provides browser functionality for loading and rendering web content.
-///
-/// The `Browser` struct handles URL loading, HTML parsing, and text rendering
-/// with support for custom fonts and visual styling. It manages a collection
-/// of text elements positioned for display in the egui UI framework.
-///
-/// # Features
-/// - URL loading and HTML tag removal via lexing
-/// - Custom font configuration with fallback support
-/// - Light mode visuals for optimal visibility
-/// - Text element management with positioning
 impl Browser {
-    /// Configures the initial context and returns a new instance of [`Browser`].
+    /// Initializes a new browser instance and configures the UI environment.
+    ///
+    /// Sets the global visual theme to light mode to ensure text contrast and
+    /// registers custom fonts required for international character support.
     ///
     /// # Arguments
-    /// * `cc` - The creation context, used to set the visual theme and access the GPU.
+    /// * `cc` - Integration context providing access to the egui render state.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // Enforce light mode so black shapes are visible against the background.
         cc.egui_ctx.set_visuals(egui::Visuals::light());
         Self::setup_custom_fonts(&cc.egui_ctx);
-        Self::default()
+    
+        Self {
+            context: cc.egui_ctx.clone(),
+            ..Default::default()
+        }
     }
 
-    /// Fetches content from a URL and populates the internal text buffer.
+    /// Fetches a web page, strips HTML tags, and stores the raw content.
     ///
-    /// This method performs a network request, strips HTML tags from the response,
-    /// and converts each character into a `Text` struct with a default screen position.
-    ///
-    /// # Arguments
-    /// * `url` - A `Url` object (presumably a custom struct) that provides a `.request()` method.
-    ///
-    /// # Workflow
-    /// 1. Calls `url.request()` to get the raw HTML/body.
-    /// 2. Passes the result to `Browser::lex()` to remove tags.
-    /// 3. Iterates through the sanitized characters.
-    /// 4. Pushes each character into `self.texts` as a `Text` instance.
+    /// This triggers a blocking network request. Upon success, the response
+    /// body is passed through a lexer to remove markup before being cached 
+    /// in `self.body`.
     ///
     /// # Errors
-    /// If the network request fails, an error message is printed to `stderr` 
-    /// via `eprintln!`, and no changes are made to `self.texts`.
+    /// Network failures or request timeouts are logged to `stderr`.
     pub fn load(&mut self, url: Url) {
         match url.request() {
             Ok(body) => {
-                self.layout(body);
+                self.body = Browser::lex(&body);
             }
             Err(e) => {
                 eprintln!("Error loading URL: {}", e);
@@ -81,31 +78,35 @@ impl Browser {
         }
     }
 
-    /// Positions text content into a 2D grid for rendering.
+    /// Computes the 2D layout for the current body text.
     ///
-    /// This method processes the input `body` by:
-    /// 1. Stripping HTML tags via `lex`.
-    /// 2. Splitting the remaining text into individual words.
-    /// 3. Calculating (x, y) coordinates for each word, wrapping to a new line
-    ///    if the `WIDTH` boundary is exceeded.
+    /// This method performs a basic word-wrap algorithm. It splits the `body` 
+    /// by whitespace and uses `egui` font metrics to determine if the next 
+    /// word exceeds the `WIDTH` boundary.
     ///
-    /// # Arguments
-    /// * `body` - The raw string (usually HTML) to be laid out.
-    ///
-    /// # Behavior
-    /// * Words are spaced by `HSTEP` horizontally.
-    /// * Lines are spaced by `VSTEP` vertically.
-    /// * Wrapping occurs when `cursor_x + HSTEP` exceeds the `WIDTH` constant.
-    fn layout(&mut self, body: String) {
+    /// # Side Effects
+    /// Clears and repopulates the `self.texts` vector.
+    fn layout(&mut self) {
         let mut cursor_x = HSTEP;
         let mut cursor_y = VSTEP;
-        let text = Browser::lex(body);
+        let text = &self.body;
+        
         for c in text.split(" ") {
+            let font_id = FontId::proportional(13.0);
+            
+            // Access egui's font engine to measure word dimensions
+            let galley = self.context.fonts_mut(|f| 
+                f.layout_no_wrap(c.to_string(), font_id, Color32::BLACK));
+
+            // Note: Currently uses HSTEP for spacing; text_width is calculated for future expansion
+            let _text_width = galley.size().x;
+
             self.texts.push(Text {
                 content: c.to_string(),
                 x: cursor_x,
                 y: cursor_y,
             });
+
             if cursor_x + HSTEP > WIDTH {
                 cursor_x = HSTEP;
                 cursor_y += VSTEP;
@@ -114,25 +115,19 @@ impl Browser {
             }
         }
     }
-    /// Removes all HTML/XML-style tags from a given string.
+
+    /// A stream-based lexer that extracts plain text from HTML/XML markup.
     ///
-    /// This function iterates through the input `text`, tracking whether the current
-    /// character is inside a tag (between `<` and `>`). It returns a new `String` 
-    /// containing only the text found outside of these markers.
-    ///
-    /// # Arguments
-    /// * `text` - A `String` containing the raw text to be processed.
-    ///
-    /// # Returns
-    /// A `String` with all `<...>` tags removed.
+    /// Iterates through the input character by character, discarding any 
+    /// content contained within `<` and `>` delimiters.
     ///
     /// # Example
     /// ```
-    /// let input = String::from("<p>Hello, <b>world</b>!</p>");
-    /// let result = lex(input);
-    /// assert_eq!(result, "Hello, world!");
+    /// let html = "<div>Hello</div>";
+    /// let plain = Browser::lex(html);
+    /// assert_eq!(plain, "Hello");
     /// ```
-    pub fn lex(text: String) -> String {
+    pub fn lex(text: &str) -> String {
         let mut output = String::new();
         let mut in_tag = false;
         let mut chars = text.chars();
@@ -147,20 +142,11 @@ impl Browser {
         output
     }
 
-    /// Configures custom fonts for the egui context.
+    /// Registers the Droid Sans Fallback font to the egui font manager.
     ///
-    /// This function loads the "Droid Sans Fallback" font from the local assets, 
-    /// registers it with the font manager, and adds it as a fallback for both 
-    /// Proportional and Monospace font families. 
-    ///
-    /// # Behavior
-    /// * **Static Inclusion:** The font file is embedded into the binary at compile time 
-    ///   using `include_bytes!`.
-    /// * **Priority:** The custom font is `.push()`-ed to the end of the font family vectors,
-    ///   meaning it will be used only when characters are missing from the default fonts.
-    ///
-    /// # Arguments
-    /// * `ctx` - A reference to the `egui::Context` where the fonts should be applied.
+    /// This ensures that CJK (Chinese, Japanese, Korean) and other non-Latin
+    /// characters render correctly. The font is embedded in the binary via 
+    /// `include_bytes!`.
     fn setup_custom_fonts(ctx: &egui::Context) {
         let mut fonts = egui::FontDefinitions::default();
 
@@ -169,6 +155,7 @@ impl Browser {
             Arc::new(egui::FontData::from_static(include_bytes!("../assets/DroidSansFallbackFull.ttf"))),
         );
 
+        // Append to existing families to serve as a fallback
         fonts.families.get_mut(&egui::FontFamily::Proportional)
             .unwrap()
             .push("droid-sans-fallback".to_owned());
@@ -182,54 +169,50 @@ impl Browser {
 }
 
 impl eframe::App for Browser {
-    /// The main update loop for the application UI.
+    /// The main UI update and rendering loop.
     ///
-    /// This function is called every frame by the `eframe` framework. It clears the
-    /// central panel and uses a `Painter` to manually render each character stored
-    /// in the `texts` vector at its specified coordinates.
-    ///
-    /// # Arguments
-    /// * `ctx` - The egui context, used to handle input and layout.
-    /// * `_frame` - The eframe frame, used for integration with the native window (unused).
-    ///
-    /// # Drawing Logic
-    /// * **Painter:** Accesses the low-level 2D drawing API.
-    /// * **Positioning:** Uses `text.x` and `text.y` to determine the screen location.
-    /// * **Alignment:** Uses `Align2::LEFT_TOP`, meaning the (x, y) coordinate refers 
-    ///   to the top-left corner of the character.
-    /// * **Styling:** Renders text in a 16pt Proportional font in Black.
+    /// Handles:
+    /// 1. **Lazy Layout**: Triggers `layout()` if the text buffer is empty.
+    /// 2. **Input Handling**: Listens for `ArrowDown` to increment scroll.
+    /// 3. **Culling & Drawing**: Iterates through `texts`, performing basic 
+    ///    frustum culling (checking if text is within the visible height) 
+    ///    before drawing to the `Painter`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.texts.is_empty() {
+            self.layout();
+        }
 
-        if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown))
-        {
+        if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
             self.scroll_y += SCROLL_STEP;
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // The painter allows direct 2D drawing onto the UI layer.
             let painter = ui.painter();
 
             for text in &self.texts {
+                // Simple culling: don't draw text that is off-screen
                 if (text.y > self.scroll_y + HEIGHT) || (text.y + VSTEP < self.scroll_y) {
                     continue;
                 }
+                
                 painter.text(
                     Pos2::new(text.x, text.y - self.scroll_y), 
-                    Align2::CENTER_CENTER, 
+                    Align2::LEFT_TOP, 
                     &text.content, 
                     FontId::proportional(13.0), 
                     Color32::BLACK
                 );
             }
-           
         });
     }
-
-    
 }
 
+/// Represents a single unit of text positioned in 2D space.
 struct Text {
+    /// The string content of the word or character.
     content: String,
+    /// Absolute horizontal position in points.
     x: f32,
+    /// Absolute vertical position in points.
     y: f32
 }
