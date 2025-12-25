@@ -81,27 +81,26 @@ impl Browser {
         }
     }
 
-    /// Processes a string and calculates the 2D layout for each character.
+    /// Positions text content into a 2D grid for rendering.
     ///
-    /// This function performs a simplified "reflow" logic:
-    /// 1. It sanitizes the input using `Browser::lex`.
-    /// 2. It iterates through characters, assigning each a coordinate based on 
-    ///    horizontal (`HSTEP`) and vertical (`VSTEP`) increments.
-    /// 3. It automatically handles line wrapping when the `cursor_x` exceeds the `WIDTH`.
+    /// This method processes the input `body` by:
+    /// 1. Stripping HTML tags via `lex`.
+    /// 2. Splitting the remaining text into individual words.
+    /// 3. Calculating (x, y) coordinates for each word, wrapping to a new line
+    ///    if the `WIDTH` boundary is exceeded.
     ///
     /// # Arguments
-    /// * `body` - The raw string (likely HTML) to be laid out.
+    /// * `body` - The raw string (usually HTML) to be laid out.
     ///
-    /// # Layout Rules
-    /// * **Initial Position:** Starts at `(HSTEP, VSTEP)`.
-    /// * **Wrapping:** If the next character would exceed `WIDTH`, `cursor_x` resets 
-    ///   to `HSTEP` and `cursor_y` increments by `VSTEP`.
-    /// * **Spacing:** Every character is treated as having a fixed width of `HSTEP`.
+    /// # Behavior
+    /// * Words are spaced by `HSTEP` horizontally.
+    /// * Lines are spaced by `VSTEP` vertically.
+    /// * Wrapping occurs when `cursor_x + HSTEP` exceeds the `WIDTH` constant.
     fn layout(&mut self, body: String) {
         let mut cursor_x = HSTEP;
         let mut cursor_y = VSTEP;
         let text = Browser::lex(body);
-        for c in text.chars() {
+        for c in text.split(" ") {
             self.texts.push(Text {
                 content: c.to_string(),
                 x: cursor_x,
