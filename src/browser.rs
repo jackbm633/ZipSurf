@@ -17,6 +17,7 @@ pub struct Browser {
 const HSTEP: f32 = 13.0;
 const VSTEP: f32 = 17.0;
 const WIDTH: f32 = 800.0;
+const HEIGHT: f32 = 600.0;
 const SCROLL_STEP: f32 = 100.0;
 
 impl Default for Browser {
@@ -210,6 +211,9 @@ impl eframe::App for Browser {
             let painter = ui.painter();
 
             for text in &self.texts {
+                if (text.y > self.scroll_y + HEIGHT) || (text.y + VSTEP < self.scroll_y) {
+                    continue;
+                }
                 painter.text(
                     Pos2::new(text.x, text.y - self.scroll_y), 
                     Align2::CENTER_CENTER, 
