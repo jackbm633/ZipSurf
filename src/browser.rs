@@ -78,41 +78,79 @@ impl Browser {
         }
     }
 
-    /// Computes the 2D layout for the current body text.
+    /// ```rust
+    /// Handles the layout logic for arranging text in a constrained horizontal
+    /// space, dynamically wrapping text to the next line if necessary.
     ///
-    /// This method performs a basic word-wrap algorithm. It splits the `body` 
-    /// by whitespace and uses `egui` font metrics to determine if the next 
-    /// word exceeds the `WIDTH` boundary.
+    /// The function involves the following steps:
+    /// - Initializes the starting cursor position (`cursor_x` and `cursor_y`)
+    ///   with horizontal and vertical step constants (`HSTEP` and `VSTEP`).
+    /// - Retrieves the text to arrange (`self.body`).
+    /// - Utilizes egui's font engine to measure the dimensions of text and space
+    ///   characters, ensuring accurate placement.
+    /// - Iteratively breaks the input `text` into whitespace-separated words and
+    ///   measures each word's width.
+    /// - Adds words to a line until they exceed the available width (`WIDTH`),
+    ///   then wraps the text to the next line by adjusting the cursor's vertical
+    ///   position (`cursor_y`).
+    /// - Pushes each word and its layout position into the `self.texts` collection.
     ///
-    /// # Side Effects
-    /// Clears and repopulates the `self.texts` vector.
+    /// ### Key Components:
+    /// - **Text Measurement**: Uses egui's font layout engine to measure individual
+    ///   words and space widths.
+    /// - **Line Wrapping**: Ensures words do not exceed the predefined width
+    ///   (`WIDTH`), aligning neatly within bounds while maintaining proper spacing.
+    /// - **Dynamic Cursor Adjustment**: Updates `cursor_x` and `cursor_y` to
+    ///   account for word placement and line wrapping.
+    ///
+    /// ### Parameters:
+    /// This method operates on the following struct fields:
+    /// - `self.body` - The text content to layout.
+    /// - `self.context` - Used for accessing font-related operations in egui.
+    /// - `self.texts` - A mutable list to store the laid-out text segments. Each
+    ///   segment includes its content and coordinates.
+    ///
+    /// ### Output:
+    /// - No direct return value. Mutates `self.texts` to store the layout metadata.
+    ///
+    /// ### Example:
+    /// ```rust
+    /// // Assuming `layout` is called within a struct that properly initializes
+    /// // `self.body`, `self.context`, and `self.texts`, no additional setup is required.
+    /// self.layout();
+    /// ```
+    /// ```
     fn layout(&mut self) {
         let mut cursor_x = HSTEP;
         let mut cursor_y = VSTEP;
         let text = &self.body;
-        
-        for c in text.split(" ") {
-            let font_id = FontId::proportional(13.0);
-            
+        let font_id = FontId::proportional(13.0);
+
+        let space_galley = self.context.fonts_mut(|f|
+            f.layout_no_wrap(" ".to_string(), font_id.clone(), Color32::BLACK));
+        let space_width = space_galley.size().x;
+        for c in text.split_whitespace() {
+
             // Access egui's font engine to measure word dimensions
             let galley = self.context.fonts_mut(|f| 
-                f.layout_no_wrap(c.to_string(), font_id, Color32::BLACK));
+                f.layout_no_wrap(c.to_string(), font_id.clone(), Color32::BLACK));
 
-            // Note: Currently uses HSTEP for spacing; text_width is calculated for future expansion
-            let _text_width = galley.size().x;
+            let text_width = galley.size().x;
 
+            if cursor_x + text_width > WIDTH - HSTEP {
+                cursor_y += self.context.fonts_mut(|f|
+                    f.row_height(&font_id)) * 1.25;
+                cursor_x = HSTEP;
+            }
             self.texts.push(Text {
                 content: c.to_string(),
                 x: cursor_x,
                 y: cursor_y,
             });
 
-            if cursor_x + HSTEP > WIDTH {
-                cursor_x = HSTEP;
-                cursor_y += VSTEP;
-            } else {
-                cursor_x += HSTEP;
-            }
+
+            cursor_x += text_width + space_width;
+
         }
     }
 
