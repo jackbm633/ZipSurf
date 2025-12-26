@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use eframe::egui;
-use egui::{Align2, Color32, FontId, Pos2};
+use egui::{Align2, Color32, FontFamily, FontId, Pos2};
 use crate::node::{Token, Text, Tag};
 use crate::url::Url;
 
@@ -99,60 +99,99 @@ impl Browser {
         }
     }
 
-    /// Lays out text tokens in a two-dimensional space while adhering to certain layout constraints,
-    /// such as maximum width and step definitions. This method is responsible for positioning words
-    /// and handling line breaks to ensure proper alignment and spacing.
+    /// Lays out tokens into lines while respecting formatting tags and viewport constraints.
     ///
-    /// # Description
-    /// - The layout function iterates over a collection of tokens (`self.tokens`) and calculates the
-    ///   x (`cursor_x`) and y (`cursor_y`) positions for each word in the provided text tokens.
-    /// - If a word cannot fit within the remaining width of the current line (determined by `WIDTH - HSTEP`),
-    ///   it moves the cursor to a new line with additional vertical spacing (calculated based on the font's row height).
-    /// - Words are spaced horizontally with the width of a single blank space (`space_width`).
-    /// - Handles only `Token::Text` tokens, ignoring `Token::Tag` entries.
+    /// The `layout` function iterates over the tokens in `self.tokens`, handling how each token
+    /// (plain text or formatting tag) affects the placement of text on a virtual canvas. It ensures
+    /// that text respects the viewport dimensions, wraps correctly to a new line when necessary,
+    /// and applies formatting (e.g., bold and italic styles) based on tags.
     ///
-    /// # Parameters
-    /// - `cursor_x`: Tracks the horizontal position for text layout.
-    /// - `cursor_y`: Tracks the vertical position for text layout.
-    /// - `tokens`: Collection of tokens to be rendered (either `Token::Text` or `Token::Tag`).
-    /// - `font_id`: Specifies the type and size of the font used for measuring and rendering text.
-    /// - `space_width`: Precomputed width of a single space character for consistent spacing between words.
+    /// #### Behavior:
+    /// - Each word is measured using a font engine to determine its dimensions.
+    /// - If the current word doesn't fit in the remaining horizontal space, the cursor moves to
+    ///   the next line.
+    /// - Words are placed with a consistent horizontal and vertical spacing defined by constants
+    ///   such as `HSTEP` and `VSTEP`.
+    /// - Formatting tags (`<i>`, `<b>`, etc.) dynamically adjust the style of the text until they
+    ///   are closed (e.g., `</i>`, `</b>`).
     ///
-    /// # Output
-    /// - Words' positions are stored in `self.texts` as `DrawText` instances, which include the content of the word and
-    ///   its calculated `x` and `y` coordinates.
+    /// #### Token Handling:
+    /// 1. **Text Tokens**: Split the text into words, measure word dimensions, and place them
+    ///    onto the canvas with appropriate spacing.
+    /// 2. **Tag Tokens**: Update the font style (e.g., italic or bold) based on the tag.
     ///
-    /// # Constraints
-    /// - Words are wrapped to a new line if the current `cursor_x` plus the word's width exceeds `WIDTH - HSTEP`.
-    /// - Line spacing is increased by `1.25 * row_height` of the font whenever a word is wrapped to the next line.
+    /// #### Variables:
+    /// - `cursor_x` and `cursor_y`:
+    ///   Track the current position of the text cursor for word placement.
+    /// - `HSTEP` and `VSTEP`:
+    ///   Define the horizontal and vertical starting offsets for layout.
+    /// - `WIDTH`:
+    ///   The maximum horizontal width allowed for text placement before wrapping to a new line.
+    /// - `font_family`, `font_weight`, `font_style`:
+    ///   Represent the current font settings, dynamically updated as formatting tags are processed.
     ///
-    /// # Dependencies
-    /// - Relies on `self.context.fonts_mut` for access to the font system, which measures text dimensions
-    ///   and provides font-related utilities.
-    /// - Requires `Token`, `DrawText`, and `FontId` structures and `Color32::BLACK` for layout customization.
+    /// #### Font Handling:
+    /// - The font to be used for each piece of text is determined dynamically by concatenating
+    ///   the `font_family`, `font_weight`, and `font_style`.
+    /// - Fonts are accessed and measured using an underlying font renderer (`self.context.fonts_mut`).
     ///
-    /// # Example Use Case
-    /// Imagine an editor where a user inputs text. This method arranges the text into lines while respecting
-    /// boundaries and spacing:
-    /// - Words are wrapped appropriately to the next line when they exceed the allocated width.
-    /// - Each word is positioned and stored in `self.texts` for rendering.
+    /// #### Example Usage:
+    /// ```rust
+    /// self.layout();
+    /// ```
     ///
-    /// # Notes
-    /// - Ensure that the `WIDTH`, `HSTEP`, and `VSTEP` constants are appropriately defined in the enclosing scope.
-    /// - The function currently ignores tokens of type `Token::Tag`. Future extensions could include support
-    ///   for rendering or processing such tokens.
+    /// This function works as part of a larger system that involves rendering and formatting
+    /// text on a UI, such as within a text editor or a rich text renderer.
+    ///
+    /// #### Assumptions:
+    /// - The function assumes pre-defined constants (`HSTEP`, `VSTEP`, `WIDTH`) and an associated
+    ///   data structure managing tokens (`self.tokens` and `self.texts`).
+    /// - The `FontId` and `DrawText` structs, along with the `Color32::BLACK` color constant, are
+    ///   assumed to be available in the current context.
+    ///
+    /// #### Limitations:
+    /// - Supports only a fixed set of formatting tags (`<i>` for italic, `<b>` for bold).
+    /// - Assumes `WIDTH` accurately reflects the horizontal constraint of the layout area.
+    ///
+    /// This function is part of a text layout module and provides necessary functionality for
+    /// rendering properly formatted and positioned text.
     fn layout(&mut self) {
         let mut cursor_x = HSTEP;
         let mut cursor_y = VSTEP;
         let tokens = &self.tokens;
-        let font_id = FontId::proportional(13.0);
 
-        let space_galley = self.context.fonts_mut(|f|
-            f.layout_no_wrap(" ".to_string(), font_id.clone(), Color32::BLACK));
-        let space_width = space_galley.size().x;
+        let font_family = "sans";
+        let mut font_weight = "";
+        let mut font_style = "";
+
+
         for c in tokens {
+            let font_name = format!("{}{}{}", font_family, font_weight, font_style);
+            let font_id = FontId::new(13.0, FontFamily::Name(Arc::from(font_name.clone())));
+
+            let space_galley = self.context.fonts_mut(|f|
+                f.layout_no_wrap(" ".to_string(), font_id.clone(), Color32::BLACK));
+            let space_width = space_galley.size().x;
+
+
             match c {
-                Token::Tag(_) => {}
+                Token::Tag(tag) => {
+                    match tag.tag.as_str() {
+                        "i" => {
+                            font_style = "italic"
+                        },
+                        "/i" => {
+                            font_style = ""
+                        },
+                        "b" => {
+                            font_weight = "bold"
+                        },
+                        "/b" => {
+                            font_weight = ""
+                        },
+                        _ => {}
+                    }
+                }
                 Token::Text(text) => {
                     for word in text.text.split_whitespace() {
                         // Access egui's font engine to measure word dimensions
@@ -170,31 +209,51 @@ impl Browser {
                             content: word.to_string(),
                             x: cursor_x,
                             y: cursor_y,
+                            font_name: font_name.to_string(),
                         });
-
 
                         cursor_x += text_width + space_width;
                     }
 
                 }
             }
-
-
-
         }
     }
 
-    /// A stream-based lexer that extracts plain text from HTML/XML markup.
+    /// Parses the input string into a sequence of tokens, distinguishing between text and tags.
     ///
-    /// Iterates through the input character by character, discarding any 
-    /// content contained within `<` and `>` delimiters.
+    /// # Arguments
+    /// * `text` - A string slice that represents the content to be tokenized.
+    ///
+    /// # Returns
+    /// * A `Vec<Token>` containing the extracted tokens. Each token can be either a `Text`
+    ///   (for plain text) or a `Tag` (for content enclosed in angle brackets `< >`).
+    ///
+    /// # Behavior
+    /// * The function iterates through the characters of the input string.
+    /// * When it encounters a `<`, it interprets the subsequent characters as part of a tag
+    ///   until a `>` is found.
+    ///   - Any text before `<` is treated as `Text` and added to the output tokens.
+    ///   - The characters between `<` and `>` are treated as a `Tag`.
+    /// * Text outside of `<` and `>` is treated as `Text`.
+    /// * If the end of the input string is reached while not inside a tag, any remaining
+    ///   content in the buffer is added as a `Text` token.
     ///
     /// # Example
+    /// ```rust
+    /// let input = "Hello <tag>world</tag>";
+    /// let tokens = lex(input);
+    /// assert_eq!(tokens, vec![
+    ///     Token::Text(Text { text: "Hello ".to_string() }),
+    ///     Token::Tag(Tag { tag: "tag".to_string() }),
+    ///     Token::Text(Text { text: "world".to_string() }),
+    ///     Token::Tag(Tag { tag: "/tag".to_string() }),
+    /// ]);
     /// ```
-    /// let html = "<div>Hello</div>";
-    /// let plain = Browser::lex(html);
-    /// assert_eq!(plain, "Hello");
-    /// ```
+    ///
+    /// # Notes
+    /// * This function assumes balanced usage of `<` and `>` in the input string.
+    /// * Any text outside `< >` is treated as plain text without further processing.
     pub fn lex(text: &str) -> Vec<Token> {
         let mut output: Vec<Token> = Vec::new();
         let mut buffer = String::new();
@@ -225,11 +284,60 @@ impl Browser {
         output
     }
 
-    /// Registers the Droid Sans Fallback font to the egui font manager.
+    /// Configures and sets up custom fonts for the `egui` UI context.
     ///
-    /// This ensures that CJK (Chinese, Japanese, Korean) and other non-Latin
-    /// characters render correctly. The font is embedded in the binary via 
-    /// `include_bytes!`.
+    /// This function overrides the default font definitions and adds multiple custom fonts
+    /// to the `egui` context. The fonts are loaded from static assets and associated with
+    /// specific names for usage within the application. Additionally, custom font families
+    /// are configured to define fallbacks when rendering text.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - A mutable reference to the `egui::Context`, which manages the UI state and
+    ///           allows setting custom fonts.
+    ///
+    /// # Details
+    ///
+    /// 1. **Custom Font Data Insertion:**
+    ///    - Fonts such as "DroidSansFallbackFull.ttf", "Roboto-Regular.ttf",
+    ///      "Roboto-Italic.ttf", "Roboto-BoldItalic.ttf", and "Roboto-Bold.ttf"
+    ///      are loaded via the `include_bytes!` macro and inserted into the font
+    ///      definitions using unique names like "droid-sans-fallback", "sans", "sansitalic",
+    ///      "sansbold", and "sansbolditalic".
+    ///
+    /// 2. **Font Family Assignments:**
+    ///    - The loaded fonts are organized into custom font families (`sans`, `sansitalic`,
+    ///      `sansbold`, and `sansbolditalic`) for specialized usage.
+    ///    - Each family holds a list of corresponding font names for rendering text.
+    ///
+    /// 3. **Fallback Configuration:**
+    ///    - The `droid-sans-fallback` font is appended as a fallback font to each of the
+    ///      custom font families, ensuring proper glyph rendering if the primary font lacks
+    ///      support for certain characters.
+    ///
+    /// 4. **Apply the Fonts:**
+    ///    - The custom font definitions are applied to the provided `egui::Context`
+    ///      using the `set_fonts` method.
+    ///
+    /// # Example Usage
+    ///
+    /// ```rust
+    /// use egui::Context;
+    ///
+    /// fn main() {
+    ///     let ctx = egui::Context::default();
+    ///     setup_custom_fonts(&ctx);
+    ///     // Now the UI will render using the custom fonts defined in this function
+    /// }
+    /// ```
+    ///
+    /// # Dependencies
+    /// Requires font assets to be present in the `../assets/` directory relative to the
+    /// source file, as specified in the `include_bytes!` macro.
+    ///
+    /// # Notes
+    /// This function should be called during the initialization or setup phase of the
+    /// application to ensure the custom fonts are used throughout the UI.
     fn setup_custom_fonts(ctx: &egui::Context) {
         let mut fonts = egui::FontDefinitions::default();
 
@@ -238,12 +346,57 @@ impl Browser {
             Arc::new(egui::FontData::from_static(include_bytes!("../assets/DroidSansFallbackFull.ttf"))),
         );
 
+        fonts.font_data.insert(
+            "sans".to_owned(),
+            Arc::new(egui::FontData::from_static(include_bytes!("../assets/Roboto-Regular.ttf")))
+        );
+
+        fonts.font_data.insert(
+            "sansitalic".to_owned(),
+            Arc::new(egui::FontData::from_static(include_bytes!("../assets/Roboto-Italic.ttf")))
+        );
+
+        fonts.font_data.insert(
+            "sansbolditalic".to_owned(),
+            Arc::new(egui::FontData::from_static(include_bytes!("../assets/Roboto-BoldItalic.ttf")))
+        );
+
+        fonts.font_data.insert(
+            "sansbold".to_owned(),
+            Arc::new(egui::FontData::from_static(include_bytes!("../assets/Roboto-Bold.ttf")))
+        );
+
+        fonts.families.insert(
+            egui::FontFamily::Name("sansbold".into()),
+            vec!["sansbold".to_owned()],
+        );
+        fonts.families.insert(
+            egui::FontFamily::Name("sansitalic".into()),
+            vec!["sansitalic".to_owned()],
+        );
+        fonts.families.insert(
+            egui::FontFamily::Name("sans".into()),
+            vec!["sans".to_owned()],
+        );
+        fonts.families.insert(
+            egui::FontFamily::Name("sansbolditalic".into()),
+            vec!["sansbolditalic".to_owned()],
+        );
+
+
+
+
         // Append to existing families to serve as a fallback
-        fonts.families.get_mut(&egui::FontFamily::Proportional)
+        fonts.families.get_mut(&egui::FontFamily::Name("sans".into()))
             .unwrap()
             .push("droid-sans-fallback".to_owned());
-
-        fonts.families.get_mut(&egui::FontFamily::Monospace)
+        fonts.families.get_mut(&egui::FontFamily::Name("sansbold".into()))
+            .unwrap()
+            .push("droid-sans-fallback".to_owned());
+        fonts.families.get_mut(&egui::FontFamily::Name("sansitalic".into()))
+            .unwrap()
+            .push("droid-sans-fallback".to_owned());
+        fonts.families.get_mut(&egui::FontFamily::Name("sansbolditalic".into()))
             .unwrap()
             .push("droid-sans-fallback".to_owned());
 
@@ -252,14 +405,49 @@ impl Browser {
 }
 
 impl eframe::App for Browser {
-    /// The main UI update and rendering loop.
+    /// ```rust
+    /// Updates the application's state and renders the user interface.
     ///
-    /// Handles:
-    /// 1. **Lazy Layout**: Triggers `layout()` if the text buffer is empty.
-    /// 2. **Input Handling**: Listens for `ArrowDown` to increment scroll.
-    /// 3. **Culling & Drawing**: Iterates through `texts`, performing basic 
-    ///    frustum culling (checking if text is within the visible height) 
-    ///    before drawing to the `Painter`.
+    /// # Parameters
+    /// - `ctx`: A reference to the [`egui::Context`] object, which provides
+    ///   context for drawing and handling input events in the `egui` UI framework.
+    /// - `_frame`: A mutable reference to the [`eframe::Frame`] object, which can be used
+    ///   to modify the frame window or interact with the host application (unused in this case).
+    ///
+    /// # Behavior
+    /// - If `self.texts` is empty, it calls the `layout` method to initialize content.
+    /// - Handles user input for scrolling by checking if the down arrow key
+    ///   (`egui::Key::ArrowDown`) has been pressed. If so, it increments the `self.scroll_y`
+    ///   value by a constant `SCROLL_STEP`.
+    /// - Utilizes the [`egui::CentralPanel`] to render its contents:
+    ///     - Loops over the `self.texts` collection and draws text elements that are within
+    ///       the visible screen area.
+    ///     - Skips rendering text elements that are outside the visible area using simple
+    ///       culling logic.
+    ///     - Uses the [`egui::Painter`] to draw text, aligning the content to the top-left corner
+    ///       of its position, with a specified font and color.
+    ///
+    /// # Notes
+    /// - The `scroll_y` value determines the vertical scroll position for the text layout.
+    /// - The text culling logic ensures better performance by avoiding rendering of off-screen
+    ///   elements.
+    /// - Each text element is drawn using the specified font and size (via `FontId`) and color
+    ///   (`Color32::BLACK`).
+    ///
+    /// # Constants Used
+    /// - `SCROLL_STEP`: The magnitude of the vertical scroll increment when the down arrow key is pressed.
+    /// - `HEIGHT`: Defines the height of the visible area for culling.
+    /// - `VSTEP`: The vertical spacing between text elements.
+    ///
+    /// # Assumptions
+    /// - The `self.texts` collection contains elements with `x`, `y`, `content`, and `font_name`
+    ///   fields.
+    /// - Font size is fixed at `13.0` units for rendering, and `Color32::BLACK` is used for text color.
+    ///
+    /// # Example Usage
+    /// This method is intended to be part of an interactive application that utilizes
+    /// `egui` and `eframe` frameworks for rendering and UI interaction.
+    /// ```
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.texts.is_empty() {
             self.layout();
@@ -282,7 +470,7 @@ impl eframe::App for Browser {
                     Pos2::new(text.x, text.y - self.scroll_y), 
                     Align2::LEFT_TOP, 
                     &text.content, 
-                    FontId::proportional(13.0), 
+                    FontId::new(13.0, FontFamily::Name(text.font_name.clone().into())),
                     Color32::BLACK
                 );
             }
@@ -290,12 +478,25 @@ impl eframe::App for Browser {
     }
 }
 
-/// Represents a single unit of text positioned in 2D space.
+/// A structure that represents text rendering properties, including its content,
+/// position, and font details.
+///
+/// # Fields
+/// - `content`:
+///   The textual content to be rendered, such as a word or character.
+/// - `x`:
+///   The absolute horizontal position of the text in points.
+/// - `y`:
+///   The absolute vertical position of the text in points.
+/// - `font_name`:
+///   The name of the font family to be used for rendering the text.
 struct DrawText {
     /// The string content of the word or character.
     content: String,
     /// Absolute horizontal position in points.
     x: f32,
     /// Absolute vertical position in points.
-    y: f32
+    y: f32,
+    /// Name of the font family used for rendering.
+    font_name: String,
 }
