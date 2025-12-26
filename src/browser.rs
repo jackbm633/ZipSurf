@@ -11,7 +11,7 @@ use crate::url::Url;
 /// handles the application's scroll state.
 pub struct Browser {
     /// A collection of positioned text elements ready for rendering.
-    texts: Vec<Text>,
+    texts: Vec<DrawText>,
     /// The current vertical scroll offset in points.
     scroll_y: f32,
     /// Handle to the egui context for font layout and UI state.
@@ -142,7 +142,7 @@ impl Browser {
                     f.row_height(&font_id)) * 1.25;
                 cursor_x = HSTEP;
             }
-            self.texts.push(Text {
+            self.texts.push(DrawText {
                 content: c.to_string(),
                 x: cursor_x,
                 y: cursor_y,
@@ -246,7 +246,7 @@ impl eframe::App for Browser {
 }
 
 /// Represents a single unit of text positioned in 2D space.
-struct Text {
+struct DrawText {
     /// The string content of the word or character.
     content: String,
     /// Absolute horizontal position in points.

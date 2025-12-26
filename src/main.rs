@@ -5,6 +5,7 @@ use crate::{url::Url};
 
 mod url;
 mod browser;
+mod node;
 
 /// Strips HTML tags from a string and prints the remaining text to the console.
 ///
