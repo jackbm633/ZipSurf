@@ -1,5 +1,4 @@
 
-/// ```rust
 /// Represents a node in a document structure, which can either be a tag or plain text.
 ///
 /// This enum is used to model the different types of elements that can exist in a document
@@ -14,13 +13,11 @@
 /// * `Text(Text)`
 ///   Represents a plain text element. The `Text` type contains the actual string data
 ///   for the text content.
-/// ```
-enum Node {
+pub enum Token {
     Tag(Tag),
     Text(Text)
 }
 
-/// ```rust
 /// A struct representing a tag.
 ///
 /// The `Tag` struct is used to encapsulate a string-based tag.
@@ -39,8 +36,8 @@ enum Node {
 /// println!("{}", my_tag.tag); // Output: example
 /// ```
 /// struct
-struct Tag {
-    tag: String
+pub struct Tag {
+    pub(crate) tag: String
 }
 
 /// ```rust
@@ -62,6 +59,6 @@ struct Tag {
 /// println!("{}", my_text.text); // Outputs: Hello, world!
 /// ```
 /// ```
-struct Text {
-    text: String
+pub struct Text {
+    pub(crate) text: String
 }

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use eframe::egui;
 use egui::{Align2, Color32, FontId, Pos2};
+use crate::node::{Token, Text, Tag};
 use crate::url::Url;
 
 /// The primary state controller for the web browser engine.
@@ -10,6 +11,25 @@ use crate::url::Url;
 /// reference to the `egui::Context` to perform font metric calculations and
 /// handles the application's scroll state.
 pub struct Browser {
+    /// A collection of `Token` objects.
+    ///
+    /// This vector stores instances of the `Token` type, which represent
+    /// individual elements or symbols in a parsed input (e.g., programming
+    /// language keywords, operators, or other lexemes). The `tokens` vector
+    /// can be used in scenarios such as tokenizing source code, analyzing
+    /// input streams, or implementing interpreters/compilers.
+    ///
+    /// # Example
+    /// ```
+    /// let tokens: Vec<Token> = Vec::new();
+    /// // Add tokens to the vector as needed
+    /// // tokens.push(Token::new(...));
+    /// ```
+    ///
+    /// # Usage
+    /// - Maintain the sequential order of tokens for parsing tasks.
+    /// - Perform operations like iteration, filtering, or mapping on the list of tokens.
+    tokens: Vec<Token>,
     /// A collection of positioned text elements ready for rendering.
     texts: Vec<DrawText>,
     /// The current vertical scroll offset in points.
@@ -33,6 +53,7 @@ impl Default for Browser {
     /// overwritten during `new()` to ensure it points to the active UI context.
     fn default() -> Self {
         Browser {
+            tokens: Vec::new(),
             texts: Vec::new(),
             scroll_y: 0.0,
             context: egui::Context::default(),
@@ -70,7 +91,7 @@ impl Browser {
     pub fn load(&mut self, url: Url) {
         match url.request() {
             Ok(body) => {
-                self.body = Browser::lex(&body);
+                self.tokens = Browser::lex(&body);
             }
             Err(e) => {
                 eprintln!("Error loading URL: {}", e);
@@ -78,78 +99,87 @@ impl Browser {
         }
     }
 
-    /// ```rust
-    /// Handles the layout logic for arranging text in a constrained horizontal
-    /// space, dynamically wrapping text to the next line if necessary.
+    /// Lays out text tokens in a two-dimensional space while adhering to certain layout constraints,
+    /// such as maximum width and step definitions. This method is responsible for positioning words
+    /// and handling line breaks to ensure proper alignment and spacing.
     ///
-    /// The function involves the following steps:
-    /// - Initializes the starting cursor position (`cursor_x` and `cursor_y`)
-    ///   with horizontal and vertical step constants (`HSTEP` and `VSTEP`).
-    /// - Retrieves the text to arrange (`self.body`).
-    /// - Utilizes egui's font engine to measure the dimensions of text and space
-    ///   characters, ensuring accurate placement.
-    /// - Iteratively breaks the input `text` into whitespace-separated words and
-    ///   measures each word's width.
-    /// - Adds words to a line until they exceed the available width (`WIDTH`),
-    ///   then wraps the text to the next line by adjusting the cursor's vertical
-    ///   position (`cursor_y`).
-    /// - Pushes each word and its layout position into the `self.texts` collection.
+    /// # Description
+    /// - The layout function iterates over a collection of tokens (`self.tokens`) and calculates the
+    ///   x (`cursor_x`) and y (`cursor_y`) positions for each word in the provided text tokens.
+    /// - If a word cannot fit within the remaining width of the current line (determined by `WIDTH - HSTEP`),
+    ///   it moves the cursor to a new line with additional vertical spacing (calculated based on the font's row height).
+    /// - Words are spaced horizontally with the width of a single blank space (`space_width`).
+    /// - Handles only `Token::Text` tokens, ignoring `Token::Tag` entries.
     ///
-    /// ### Key Components:
-    /// - **Text Measurement**: Uses egui's font layout engine to measure individual
-    ///   words and space widths.
-    /// - **Line Wrapping**: Ensures words do not exceed the predefined width
-    ///   (`WIDTH`), aligning neatly within bounds while maintaining proper spacing.
-    /// - **Dynamic Cursor Adjustment**: Updates `cursor_x` and `cursor_y` to
-    ///   account for word placement and line wrapping.
+    /// # Parameters
+    /// - `cursor_x`: Tracks the horizontal position for text layout.
+    /// - `cursor_y`: Tracks the vertical position for text layout.
+    /// - `tokens`: Collection of tokens to be rendered (either `Token::Text` or `Token::Tag`).
+    /// - `font_id`: Specifies the type and size of the font used for measuring and rendering text.
+    /// - `space_width`: Precomputed width of a single space character for consistent spacing between words.
     ///
-    /// ### Parameters:
-    /// This method operates on the following struct fields:
-    /// - `self.body` - The text content to layout.
-    /// - `self.context` - Used for accessing font-related operations in egui.
-    /// - `self.texts` - A mutable list to store the laid-out text segments. Each
-    ///   segment includes its content and coordinates.
+    /// # Output
+    /// - Words' positions are stored in `self.texts` as `DrawText` instances, which include the content of the word and
+    ///   its calculated `x` and `y` coordinates.
     ///
-    /// ### Output:
-    /// - No direct return value. Mutates `self.texts` to store the layout metadata.
+    /// # Constraints
+    /// - Words are wrapped to a new line if the current `cursor_x` plus the word's width exceeds `WIDTH - HSTEP`.
+    /// - Line spacing is increased by `1.25 * row_height` of the font whenever a word is wrapped to the next line.
     ///
-    /// ### Example:
-    /// ```rust
-    /// // Assuming `layout` is called within a struct that properly initializes
-    /// // `self.body`, `self.context`, and `self.texts`, no additional setup is required.
-    /// self.layout();
-    /// ```
-    /// ```
+    /// # Dependencies
+    /// - Relies on `self.context.fonts_mut` for access to the font system, which measures text dimensions
+    ///   and provides font-related utilities.
+    /// - Requires `Token`, `DrawText`, and `FontId` structures and `Color32::BLACK` for layout customization.
+    ///
+    /// # Example Use Case
+    /// Imagine an editor where a user inputs text. This method arranges the text into lines while respecting
+    /// boundaries and spacing:
+    /// - Words are wrapped appropriately to the next line when they exceed the allocated width.
+    /// - Each word is positioned and stored in `self.texts` for rendering.
+    ///
+    /// # Notes
+    /// - Ensure that the `WIDTH`, `HSTEP`, and `VSTEP` constants are appropriately defined in the enclosing scope.
+    /// - The function currently ignores tokens of type `Token::Tag`. Future extensions could include support
+    ///   for rendering or processing such tokens.
     fn layout(&mut self) {
         let mut cursor_x = HSTEP;
         let mut cursor_y = VSTEP;
-        let text = &self.body;
+        let tokens = &self.tokens;
         let font_id = FontId::proportional(13.0);
 
         let space_galley = self.context.fonts_mut(|f|
             f.layout_no_wrap(" ".to_string(), font_id.clone(), Color32::BLACK));
         let space_width = space_galley.size().x;
-        for c in text.split_whitespace() {
+        for c in tokens {
+            match c {
+                Token::Tag(_) => {}
+                Token::Text(text) => {
+                    for word in text.text.split_whitespace() {
+                        // Access egui's font engine to measure word dimensions
+                        let galley = self.context.fonts_mut(|f|
+                            f.layout_no_wrap(word.to_string(), font_id.clone(), Color32::BLACK));
 
-            // Access egui's font engine to measure word dimensions
-            let galley = self.context.fonts_mut(|f| 
-                f.layout_no_wrap(c.to_string(), font_id.clone(), Color32::BLACK));
+                        let text_width = galley.size().x;
 
-            let text_width = galley.size().x;
+                        if cursor_x + text_width > WIDTH - HSTEP {
+                            cursor_y += self.context.fonts_mut(|f|
+                                f.row_height(&font_id)) * 1.25;
+                            cursor_x = HSTEP;
+                        }
+                        self.texts.push(DrawText {
+                            content: word.to_string(),
+                            x: cursor_x,
+                            y: cursor_y,
+                        });
 
-            if cursor_x + text_width > WIDTH - HSTEP {
-                cursor_y += self.context.fonts_mut(|f|
-                    f.row_height(&font_id)) * 1.25;
-                cursor_x = HSTEP;
+
+                        cursor_x += text_width + space_width;
+                    }
+
+                }
             }
-            self.texts.push(DrawText {
-                content: c.to_string(),
-                x: cursor_x,
-                y: cursor_y,
-            });
 
 
-            cursor_x += text_width + space_width;
 
         }
     }
@@ -165,17 +195,32 @@ impl Browser {
     /// let plain = Browser::lex(html);
     /// assert_eq!(plain, "Hello");
     /// ```
-    pub fn lex(text: &str) -> String {
-        let mut output = String::new();
+    pub fn lex(text: &str) -> Vec<Token> {
+        let mut output: Vec<Token> = Vec::new();
+        let mut buffer = String::new();
         let mut in_tag = false;
         let mut chars = text.chars();
         while let Some(c) = chars.next() {
             match c {
-                '<' => in_tag = true,
-                '>' => in_tag = false,
-                _ if !in_tag => output.push(c),
-                _ => {}
+                '<' => {
+                    in_tag = true;
+                    if !buffer.is_empty() {output.push(
+                        Token::Text(Text {text: buffer.clone()}))
+                    }
+                    buffer.clear();
+                }
+                '>' => {
+                    in_tag = false;
+                    output.push(Token::Tag(Tag {tag: buffer.clone()}));
+                    buffer.clear();
+                },
+                _ => {
+                    buffer.push(c);
+                }
             }
+        }
+        if !in_tag && !buffer.is_empty() {
+            output.push(Token::Text(Text {text: buffer.clone()}))
         }
         output
     }
