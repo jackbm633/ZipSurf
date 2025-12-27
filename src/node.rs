@@ -13,6 +13,7 @@
 /// * `Text(Text)`
 ///   Represents a plain text element. The `Text` type contains the actual string data
 ///   for the text content.
+#[derive(Clone)]
 pub enum Token {
     Tag(Tag),
     Text(Text)
@@ -36,6 +37,7 @@ pub enum Token {
 /// println!("{}", my_tag.tag); // Output: example
 /// ```
 /// struct
+#[derive(Clone)]
 pub struct Tag {
     pub(crate) tag: String
 }
@@ -59,6 +61,7 @@ pub struct Tag {
 /// println!("{}", my_text.text); // Outputs: Hello, world!
 /// ```
 /// ```
+#[derive(Clone)]
 pub struct Text {
     pub(crate) text: String
 }

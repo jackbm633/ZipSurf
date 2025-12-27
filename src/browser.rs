@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use eframe::egui;
 use egui::{Align2, Color32, FontFamily, FontId, Pos2};
+use crate::layout::{Layout, HEIGHT, VSTEP};
 use crate::node::{Token, Text, Tag};
 use crate::url::Url;
 
@@ -30,7 +31,6 @@ pub struct Browser {
     /// - Maintain the sequential order of tokens for parsing tasks.
     /// - Perform operations like iteration, filtering, or mapping on the list of tokens.
     tokens: Vec<Token>,
-    /// A collection of positioned text elements ready for rendering.
     texts: Vec<DrawText>,
     /// The current vertical scroll offset in points.
     scroll_y: f32,
@@ -40,10 +40,8 @@ pub struct Browser {
     body: String,
 }
 
-const HSTEP: f32 = 13.0;
-const VSTEP: f32 = 17.0;
-const WIDTH: f32 = 800.0;
-const HEIGHT: f32 = 600.0;
+
+
 const SCROLL_STEP: f32 = 100.0;
 
 impl Default for Browser {
@@ -95,127 +93,6 @@ impl Browser {
             }
             Err(e) => {
                 eprintln!("Error loading URL: {}", e);
-            }
-        }
-    }
-
-    /// Lays out tokens into lines while respecting formatting tags and viewport constraints.
-    ///
-    /// The `layout` function iterates over the tokens in `self.tokens`, handling how each token
-    /// (plain text or formatting tag) affects the placement of text on a virtual canvas. It ensures
-    /// that text respects the viewport dimensions, wraps correctly to a new line when necessary,
-    /// and applies formatting (e.g., bold and italic styles) based on tags.
-    ///
-    /// #### Behavior:
-    /// - Each word is measured using a font engine to determine its dimensions.
-    /// - If the current word doesn't fit in the remaining horizontal space, the cursor moves to
-    ///   the next line.
-    /// - Words are placed with a consistent horizontal and vertical spacing defined by constants
-    ///   such as `HSTEP` and `VSTEP`.
-    /// - Formatting tags (`<i>`, `<b>`, etc.) dynamically adjust the style of the text until they
-    ///   are closed (e.g., `</i>`, `</b>`).
-    ///
-    /// #### Token Handling:
-    /// 1. **Text Tokens**: Split the text into words, measure word dimensions, and place them
-    ///    onto the canvas with appropriate spacing.
-    /// 2. **Tag Tokens**: Update the font style (e.g., italic or bold) based on the tag.
-    ///
-    /// #### Variables:
-    /// - `cursor_x` and `cursor_y`:
-    ///   Track the current position of the text cursor for word placement.
-    /// - `HSTEP` and `VSTEP`:
-    ///   Define the horizontal and vertical starting offsets for layout.
-    /// - `WIDTH`:
-    ///   The maximum horizontal width allowed for text placement before wrapping to a new line.
-    /// - `font_family`, `font_weight`, `font_style`:
-    ///   Represent the current font settings, dynamically updated as formatting tags are processed.
-    ///
-    /// #### Font Handling:
-    /// - The font to be used for each piece of text is determined dynamically by concatenating
-    ///   the `font_family`, `font_weight`, and `font_style`.
-    /// - Fonts are accessed and measured using an underlying font renderer (`self.context.fonts_mut`).
-    ///
-    /// #### Example Usage:
-    /// ```rust
-    /// self.layout();
-    /// ```
-    ///
-    /// This function works as part of a larger system that involves rendering and formatting
-    /// text on a UI, such as within a text editor or a rich text renderer.
-    ///
-    /// #### Assumptions:
-    /// - The function assumes pre-defined constants (`HSTEP`, `VSTEP`, `WIDTH`) and an associated
-    ///   data structure managing tokens (`self.tokens` and `self.texts`).
-    /// - The `FontId` and `DrawText` structs, along with the `Color32::BLACK` color constant, are
-    ///   assumed to be available in the current context.
-    ///
-    /// #### Limitations:
-    /// - Supports only a fixed set of formatting tags (`<i>` for italic, `<b>` for bold).
-    /// - Assumes `WIDTH` accurately reflects the horizontal constraint of the layout area.
-    ///
-    /// This function is part of a text layout module and provides necessary functionality for
-    /// rendering properly formatted and positioned text.
-    fn layout(&mut self) {
-        let mut cursor_x = HSTEP;
-        let mut cursor_y = VSTEP;
-        let tokens = &self.tokens;
-
-        let font_family = "sans";
-        let mut font_weight = "";
-        let mut font_style = "";
-
-
-        for c in tokens {
-            let font_name = format!("{}{}{}", font_family, font_weight, font_style);
-            let font_id = FontId::new(13.0, FontFamily::Name(Arc::from(font_name.clone())));
-
-            let space_galley = self.context.fonts_mut(|f|
-                f.layout_no_wrap(" ".to_string(), font_id.clone(), Color32::BLACK));
-            let space_width = space_galley.size().x;
-
-
-            match c {
-                Token::Tag(tag) => {
-                    match tag.tag.as_str() {
-                        "i" => {
-                            font_style = "italic"
-                        },
-                        "/i" => {
-                            font_style = ""
-                        },
-                        "b" => {
-                            font_weight = "bold"
-                        },
-                        "/b" => {
-                            font_weight = ""
-                        },
-                        _ => {}
-                    }
-                }
-                Token::Text(text) => {
-                    for word in text.text.split_whitespace() {
-                        // Access egui's font engine to measure word dimensions
-                        let galley = self.context.fonts_mut(|f|
-                            f.layout_no_wrap(word.to_string(), font_id.clone(), Color32::BLACK));
-
-                        let text_width = galley.size().x;
-
-                        if cursor_x + text_width > WIDTH - HSTEP {
-                            cursor_y += self.context.fonts_mut(|f|
-                                f.row_height(&font_id)) * 1.25;
-                            cursor_x = HSTEP;
-                        }
-                        self.texts.push(DrawText {
-                            content: word.to_string(),
-                            x: cursor_x,
-                            y: cursor_y,
-                            font_name: font_name.to_string(),
-                        });
-
-                        cursor_x += text_width + space_width;
-                    }
-
-                }
             }
         }
     }
@@ -450,7 +327,8 @@ impl eframe::App for Browser {
     /// ```
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.texts.is_empty() {
-            self.layout();
+            let layout = Layout::new(&self.tokens.clone(), ctx.clone());
+            self.texts = layout.texts;
         }
 
         if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
@@ -490,13 +368,13 @@ impl eframe::App for Browser {
 ///   The absolute vertical position of the text in points.
 /// - `font_name`:
 ///   The name of the font family to be used for rendering the text.
-struct DrawText {
+pub(crate) struct DrawText {
     /// The string content of the word or character.
-    content: String,
+    pub(crate) content: String,
     /// Absolute horizontal position in points.
-    x: f32,
+    pub(crate) x: f32,
     /// Absolute vertical position in points.
-    y: f32,
+    pub(crate) y: f32,
     /// Name of the font family used for rendering.
-    font_name: String,
+    pub(crate) font_name: String,
 }
