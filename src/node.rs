@@ -74,6 +74,16 @@ pub struct HtmlNode {
     pub(crate) parent: Option<Rc<RefCell<HtmlNode>>>
 }
 
+impl HtmlNode {
+    pub(crate) fn new(node_type: HtmlNodeType) -> HtmlNode {
+        HtmlNode {
+            node_type,
+            children: vec![],
+            parent: None,
+        }
+    }
+}
+
 /// A struct representing a tag.
 ///
 /// The `Tag` struct is used to encapsulate a string-based tag.

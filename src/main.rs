@@ -7,6 +7,7 @@ mod url;
 mod browser;
 mod node;
 mod layout;
+mod html_parser;
 
 /// Strips HTML tags from a string and prints the remaining text to the console.
 ///
