@@ -348,7 +348,7 @@ impl eframe::App for Browser {
                     Pos2::new(text.x, text.y - self.scroll_y), 
                     Align2::LEFT_TOP, 
                     &text.content, 
-                    FontId::new(13.0, FontFamily::Name(text.font_name.clone().into())),
+                    FontId::new(text.font_size, FontFamily::Name(text.font_name.clone().into())),
                     Color32::BLACK
                 );
             }
@@ -377,4 +377,6 @@ pub(crate) struct DrawText {
     pub(crate) y: f32,
     /// Name of the font family used for rendering.
     pub(crate) font_name: String,
+    /// Font size in points.
+    pub(crate) font_size: f32,
 }

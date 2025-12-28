@@ -17,6 +17,7 @@ pub struct Layout {
     font_family: String,
     font_weight: String,
     font_style: String,
+    font_size: f32,
     context: egui::Context,
 }
 
@@ -52,6 +53,7 @@ impl Layout {
             font_family: "sans".to_string(),
             font_weight: "".to_string(),
             font_style: "".to_string(),
+            font_size: 16.0,
             context,
         };
 
@@ -106,7 +108,7 @@ impl Layout {
     /// ```
     fn token(&mut self, token: &Token) {
         let font_name = format!("{}{}{}", self.font_family, self.font_weight, self.font_style);
-        let font_id = FontId::new(13.0, FontFamily::Name(Arc::from(font_name.clone())));
+        let font_id = FontId::new(self.font_size, FontFamily::Name(Arc::from(font_name.clone())));
 
         let space_galley = self.context.fonts_mut(|f|
             f.layout_no_wrap(" ".to_string(), font_id.clone(), Color32::BLACK));
@@ -128,6 +130,10 @@ impl Layout {
                     "/b" => {
                         self.font_weight = "".into()
                     },
+                    "big" => self.font_size += 16.0/3.0,
+                    "/big" => self.font_size -= 16.0/3.0,
+                    "small" => self.font_size -= 8.0/3.0,
+                    "/small" => self.font_size += 8.0/3.0,
                     _ => {}
                 }
             }
@@ -184,6 +190,7 @@ impl Layout {
             x: self.cursor_x,
             y: self.cursor_y,
             font_name: font_name.to_string(),
+            font_size: self.font_size,
         });
 
         self.cursor_x += text_width + space_width;
