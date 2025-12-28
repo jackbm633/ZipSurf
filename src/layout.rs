@@ -1,5 +1,5 @@
 ﻿use crate::browser::DrawText;
-use crate::node::Token;
+use crate::node::HtmlNodeType;
 use eframe::epaint::{Color32, FontFamily, FontId};
 use egui::Context;
 use std::sync::Arc;
@@ -45,7 +45,7 @@ impl Layout {
     /// - Iterates through each `Token` in the provided `tokens` vector and processes it
     ///   using the `token` method.
     ///
-    pub fn new(tokens: &Vec<Token>, context: Context) -> Self {
+    pub fn new(tokens: &Vec<HtmlNodeType>, context: Context) -> Self {
 
         let mut layout = Self {
             texts: Vec::new(),
@@ -112,7 +112,7 @@ impl Layout {
     /// processor.token(Token::Text(Text { text: "Hello World".to_string() })); // Renders "Hello" and "World".
     /// processor.token(Token::Tag(Tag { tag: "/b".to_string() })); // Switches back to normal weight.
     /// ```
-    fn token(&mut self, token: &Token) {
+    fn token(&mut self, token: &HtmlNodeType) {
         let font_name = format!("{}{}{}", self.font_family, self.font_weight, self.font_style);
         let font_id = FontId::new(self.font_size, FontFamily::Name(Arc::from(font_name.clone())));
 
@@ -122,7 +122,7 @@ impl Layout {
 
 
         match token {
-            Token::Tag(tag) => {
+            HtmlNodeType::Element(tag) => {
                 match tag.tag.as_str() {
                     "i" => {
                         self.font_style = "italic".into()
@@ -152,7 +152,7 @@ impl Layout {
                     _ => {}
                 }
             }
-            Token::Text(text) => {
+            HtmlNodeType::Text(text) => {
                 for word in text.text.split_whitespace() {
                     self.word(&font_id, space_width, word);
                 }

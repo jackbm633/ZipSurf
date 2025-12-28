@@ -1,5 +1,5 @@
 use crate::layout::{Layout, HEIGHT};
-use crate::node::{Tag, Text, Token};
+use crate::node::{Element, Text, HtmlNodeType};
 use crate::url::Url;
 use eframe::egui;
 use egui::{Color32, Galley, Pos2};
@@ -8,7 +8,7 @@ use std::sync::Arc;
 /// The primary state controller for the web browser engine.
 ///
 /// This struct manages the lifecycle of web content from initial URL fetching
-/// through HTML sanitization and final 2D layout. It maintains a persistent 
+/// through HTML sanitization and final 2D layout. It maintains a persistent
 /// reference to the `egui::Context` to perform font metric calculations and
 /// handles the application's scroll state.
 pub struct Browser {
@@ -30,7 +30,7 @@ pub struct Browser {
     /// # Usage
     /// - Maintain the sequential order of tokens for parsing tasks.
     /// - Perform operations like iteration, filtering, or mapping on the list of tokens.
-    tokens: Vec<Token>,
+    tokens: Vec<HtmlNodeType>,
     texts: Vec<DrawText>,
     /// The current vertical scroll offset in points.
     scroll_y: f32,
@@ -46,8 +46,8 @@ const SCROLL_STEP: f32 = 100.0;
 
 impl Default for Browser {
     /// Returns a `Browser` instance with empty buffers and default scroll position.
-    /// 
-    /// Note: The `context` is initialized with a default handle which should be 
+    ///
+    /// Note: The `context` is initialized with a default handle which should be
     /// overwritten during `new()` to ensure it points to the active UI context.
     fn default() -> Self {
         Browser {
@@ -71,7 +71,7 @@ impl Browser {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         cc.egui_ctx.set_visuals(egui::Visuals::light());
         Self::setup_custom_fonts(&cc.egui_ctx);
-    
+
         Self {
             context: cc.egui_ctx.clone(),
             ..Default::default()
@@ -81,7 +81,7 @@ impl Browser {
     /// Fetches a web page, strips HTML tags, and stores the raw content.
     ///
     /// This triggers a blocking network request. Upon success, the response
-    /// body is passed through a lexer to remove markup before being cached 
+    /// body is passed through a lexer to remove markup before being cached
     /// in `self.body`.
     ///
     /// # Errors
@@ -131,8 +131,8 @@ impl Browser {
     /// # Notes
     /// * This function assumes balanced usage of `<` and `>` in the input string.
     /// * Any text outside `< >` is treated as plain text without further processing.
-    pub fn lex(text: &str) -> Vec<Token> {
-        let mut output: Vec<Token> = Vec::new();
+    pub fn lex(text: &str) -> Vec<HtmlNodeType> {
+        let mut output: Vec<HtmlNodeType> = Vec::new();
         let mut buffer = String::new();
         let mut in_tag = false;
         let mut chars = text.chars();
@@ -141,13 +141,13 @@ impl Browser {
                 '<' => {
                     in_tag = true;
                     if !buffer.is_empty() {output.push(
-                        Token::Text(Text {text: buffer.clone()}))
+                        HtmlNodeType::Text(Text {text: buffer.clone()}))
                     }
                     buffer.clear();
                 }
                 '>' => {
                     in_tag = false;
-                    output.push(Token::Tag(Tag {tag: buffer.clone()}));
+                    output.push(HtmlNodeType::Element(Element {tag: buffer.clone()}));
                     buffer.clear();
                 },
                 _ => {
@@ -156,7 +156,7 @@ impl Browser {
             }
         }
         if !in_tag && !buffer.is_empty() {
-            output.push(Token::Text(Text {text: buffer.clone()}))
+            output.push(HtmlNodeType::Text(Text {text: buffer.clone()}))
         }
         output
     }
@@ -345,7 +345,7 @@ impl eframe::App for Browser {
                 }
 
                 painter.galley(
-                    Pos2::new(text.x, text.y - self.scroll_y), 
+                    Pos2::new(text.x, text.y - self.scroll_y),
                     text.galley.clone(),
                     Color32::BLACK,
                 );
