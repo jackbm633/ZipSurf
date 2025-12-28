@@ -1,9 +1,9 @@
-use std::sync::Arc;
-use eframe::egui;
-use egui::{Align2, Color32, FontFamily, FontId, Pos2};
-use crate::layout::{Layout, HEIGHT, VSTEP};
-use crate::node::{Token, Text, Tag};
+use crate::layout::{Layout, HEIGHT};
+use crate::node::{Tag, Text, Token};
 use crate::url::Url;
+use eframe::egui;
+use egui::{Color32, Galley, Pos2};
+use std::sync::Arc;
 
 /// The primary state controller for the web browser engine.
 ///
@@ -340,16 +340,14 @@ impl eframe::App for Browser {
 
             for text in &self.texts {
                 // Simple culling: don't draw text that is off-screen
-                if (text.y > self.scroll_y + HEIGHT) || (text.y + VSTEP < self.scroll_y) {
+                if (text.y > self.scroll_y + HEIGHT) || (text.y + text.galley.size().y < self.scroll_y) {
                     continue;
                 }
-                
-                painter.text(
+
+                painter.galley(
                     Pos2::new(text.x, text.y - self.scroll_y), 
-                    Align2::LEFT_TOP, 
-                    &text.content, 
-                    FontId::new(text.font_size, FontFamily::Name(text.font_name.clone().into())),
-                    Color32::BLACK
+                    text.galley.clone(),
+                    Color32::BLACK,
                 );
             }
         });
@@ -369,14 +367,10 @@ impl eframe::App for Browser {
 /// - `font_name`:
 ///   The name of the font family to be used for rendering the text.
 pub(crate) struct DrawText {
-    /// The string content of the word or character.
-    pub(crate) content: String,
     /// Absolute horizontal position in points.
     pub(crate) x: f32,
     /// Absolute vertical position in points.
     pub(crate) y: f32,
-    /// Name of the font family used for rendering.
-    pub(crate) font_name: String,
-    /// Font size in points.
-    pub(crate) font_size: f32,
+    /// Galley for drawing the text.
+    pub(crate) galley: Arc<Galley>
 }
