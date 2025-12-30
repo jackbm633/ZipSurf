@@ -22,7 +22,6 @@ pub struct Layout {
     cursor_y: f32,
     context: Context,
     line: Vec<DrawText>,
-    font_name: String,
     font_id: FontId,
     space_width: f32,
 
@@ -63,7 +62,6 @@ impl Layout {
             cursor_y: VSTEP,
             cursor_x: HSTEP,
             line: Vec::new(),
-            font_name: "".into(),
             font_id: FontId::default(),
             space_width: 0.0
 
@@ -76,98 +74,6 @@ impl Layout {
 
 
         layout
-    }
-
-    /// Processes a `Token` and updates the formatting or renders text.
-    ///
-    /// This function processes tokens of type `Token` and updates the current
-    /// text style or renders textual content based on the token type. The style
-    /// updates are determined by specific tag tokens, such as changing the font
-    /// style to italic or bold. Text tokens are split into individual words
-    /// and subsequently processed for rendering.
-    ///
-    /// # Parameters
-    /// - `token`: An instance of `Token`, which represents either a formatting
-    ///   tag or a textual content to be processed.
-    ///
-    /// # Behavior
-    /// - If the token is a `Tag`, it modifies the current font style or weight
-    ///   based on the tag's value. Supported tags are:
-    ///     - `"i"`: Sets the font style to italic.
-    ///     - `"/i"`: Resets the font style to normal.
-    ///     - `"b"`: Sets the font weight to bold.
-    ///     - `"/b"`: Resets the font weight to normal.
-    ///   Unknown tags are ignored.
-    /// - If the token is `Text`, it splits the text into words based on whitespace
-    ///   and processes each word individually using the `word` method.
-    ///
-    /// # Font and Layout
-    /// - Uses the combination of `self.font_family`, `self.font_weight`, and
-    ///   `self.font_style` to construct a unified font name.
-    /// - Creates a `FontId` instance with the specified font size (13.0) and
-    ///   font family derived from the font name.
-    /// - Calculates the width of a single space character using the current font
-    ///   settings for proper spacing during word rendering.
-    ///
-    /// # Internal Methods
-    /// - `self.word`: Called for each word in the `Text` token to process and
-    ///   render the word with the current font and layout settings.
-    ///
-    /// # Example
-    /// ```ignore
-    /// let mut processor = YourProcessor { /* fields */ };
-    /// processor.token(Token::Tag(Tag { tag: "b".to_string() })); // Switches to bold.
-    /// processor.token(Token::Text(Text { text: "Hello World".to_string() })); // Renders "Hello" and "World".
-    /// processor.token(Token::Tag(Tag { tag: "/b".to_string() })); // Switches back to normal weight.
-    /// ```
-    fn token(&mut self, token: &HtmlNodeType) {
-        let font_name = format!("{}{}{}", self.font_family, self.font_weight, self.font_style);
-        let font_id = FontId::new(self.font_size, FontFamily::Name(Arc::from(font_name.clone())));
-
-        let space_galley = self.context.fonts_mut(|f|
-            f.layout_no_wrap(" ".to_string(), font_id.clone(), Color32::BLACK));
-        let space_width = space_galley.size().x;
-
-
-        match token {
-            HtmlNodeType::Element(tag) => {
-                match tag.tag.as_str() {
-                    "i" => {
-                        self.font_style = "italic".into()
-                    },
-                    "/i" => {
-                        self.font_style = "".into()
-                    },
-                    "b" => {
-                        self.font_weight = "bold".into()
-                    },
-                    "/b" => {
-                        self.font_weight = "".into()
-                    },
-                    "big" => self.font_size += 16.0/3.0,
-                    "/big" => self.font_size -= 16.0/3.0,
-                    "small" => self.font_size -= 8.0/3.0,
-                    "/small" => self.font_size += 8.0/3.0,
-                    "br" => {
-                        self.flush_line();
-                    }
-
-                    "/p" => {
-                        self.flush_line();
-                        self.cursor_y += VSTEP;
-                    }
-
-                    _ => {}
-                }
-            }
-            HtmlNodeType::Text(text) => {
-                for word in text.text.split_whitespace() {
-                    self.word(word);
-                }
-
-            }
-        }
-
     }
 
     /// Handles opening HTML-like tags and adjusts the corresponding text formatting properties
@@ -268,32 +174,35 @@ impl Layout {
         }
     }
 
-    /// ```rust
-    /// This function is responsible for rendering a word in the custom text rendering system.
-    /// It lays out the word using the font engine, calculates word dimensions, and handles
-    /// text wrapping if the word exceeds the available width.
+    /// Adds a word to the current line of text being processed in the rendering context.
+    /// If the word does not fit within the remaining horizontal space on the line, the current
+    /// line is flushed and the word is added to a new line.
     ///
     /// # Parameters
-    /// - `font_name`: A `String` representing the name of the font to be used.
-    /// - `font_id`: A reference to the `FontId` that specifies the font details (e.g., style and size).
-    /// - `space_width`: A `f32` value representing the width of the space character to account for spacing after the word.
-    /// - `word`: A `&str` that represents the word to be drawn.
+    /// - `word`: A reference to the string slice representing the word to be added.
     ///
-    /// # Functionality
-    /// 1. Uses the font engine from `egui` to measure the dimensions of the given word based on the provided `FontId`.
-    /// 2. Checks whether the current cursor position (`cursor_x`) plus the word’s width exceeds
-    ///    the available rendering area (`WIDTH - HSTEP`).
-    ///    - If the word exceeds the available width, it moves the cursor to the next line by increasing
-    ///      `cursor_y` and resetting `cursor_x` to the starting horizontal position (`HSTEP`).
-    /// 3. Adds the word as a `DrawText` object to the `texts` list, including its content, position,
-    ///    and font properties.
-    /// 4. Updates `cursor_x` to include the word’s width and the provided `space_width`.
+    /// # Behavior
+    /// - Uses egui's font engine to measure the width of the word in pixels based on the
+    ///   provided font size and color.
+    /// - Checks if adding the word would exceed the maximum allowed line width (`WIDTH - HSTEP`).
+    ///   - If it would exceed, the current line is flushed (`self.flush_line()`), and the word
+    ///     is added to a new line.
+    /// - Adds the word's visual representation and position (using `DrawText`) to the current line.
+    /// - Updates the horizontal cursor position (`self.cursor_x`) to account for the added word and
+    ///   the required space between words.
     ///
-    /// # Remarks
-    /// - The function is dependent on constants or variables such as `WIDTH` and `HSTEP` for layout constraints.
-    /// - The `row_height` method of the font engine is used to determine the height of a line when moving to a new one.
-    /// - The function assumes that `cursor_x` and `cursor_y` are updated globally for text positioning.
+    /// # Notes
+    /// - `self.context.fonts_mut` is used to access and measure the font metrics for the word.
+    /// - `self.line` is updated with a new `DrawText` object containing the word's rendered
+    ///   galley and its position on the current line.
+    /// - Assumes that `self.flush_line()` properly handles the process of completing the current
+    ///   line and prepares for new content.
+    /// - Relies on the constants `WIDTH` and `HSTEP` for layout constraints.
+    ///
+    /// # Example
     /// ```
+    /// let mut renderer = Renderer::new();
+    /// renderer.word("Example");
     fn word(&mut self, word: &str) {
         // Access egui's font engine to measure word dimensions
         let galley = self.context.fonts_mut(|f|
@@ -403,7 +312,6 @@ impl Layout {
 
     }
 
-    /// ```rust
     /// Recursively processes an HTML tree represented by `HtmlNode`.
     ///
     /// # Arguments
@@ -442,7 +350,6 @@ impl Layout {
     ///
     /// The above example demonstrates creating an `HtmlNode` tree with a `div` element
     /// containing a text node. The `recurse` function processes this tree recursively.
-    /// ```
     fn recurse(&mut self, tree: Rc<RefCell<HtmlNode>>) {
         enum Action {
             ProcessElement { tag: String, children: Vec<Rc<RefCell<HtmlNode>>> },
@@ -476,6 +383,44 @@ impl Layout {
         }
     }
 
+    /// Updates the font configuration for the current context.
+    ///
+    /// This method constructs a unique font identifier string by concatenating the
+    /// font family, font weight, and font style. It then sets the `font_id` property
+    /// using the specified font size and the newly constructed font identifier.
+    ///
+    /// Additionally, this method calculates the width of a single space character
+    /// (`space_width`) using the updated font settings, which may be used for
+    /// layout calculations or spacing adjustments.
+    ///
+    /// # Fields Updated
+    /// - `font_id`: Represents the new font descriptor based on the updated parameters.
+    /// - `space_width`: Stores the width of a single space character (`" "`) for the selected font.
+    ///
+    /// # Process
+    /// 1. Constructs the `font_name` as a combination of:
+    ///    - `font_family`
+    ///    - `font_weight`
+    ///    - `font_style`
+    /// 2. Updates the `font_id` with the specified font size and the constructed font identifier.
+    /// 3. Computes the width of a space character (`space_width`) by laying out a single
+    ///    space using the updated `font_id`.
+    ///
+    /// # Requirements
+    /// - This method assumes `self.context` provides access to the font system
+    ///   via its `fonts_mut` method.
+    /// - The `FontId` and `FontFamily::Name` types must be available in the scope.
+    ///
+    /// # Example
+    /// ```rust
+    /// // Before calling update_font, ensure the font properties like
+    /// // font_family, font_weight, font_style, and font_size are properly set.
+    /// obj.update_font();
+    ///
+    /// // After calling update_font, the `font_id` and `space_width` are updated.
+    /// println!("Font ID updated to: {:?}", obj.font_id);
+    /// println!("Space width calculated as: {:?}", obj.space_width);
+    /// ```
     fn update_font(&mut self) {
         let font_name = format!("{}{}{}", self.font_family, self.font_weight, self.font_style);
         self.font_id = FontId::new(self.font_size, FontFamily::Name(Arc::from(font_name.clone())));
