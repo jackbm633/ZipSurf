@@ -4,6 +4,7 @@ use crate::url::Url;
 use eframe::egui;
 use egui::{Color32, Galley, Pos2};
 use std::sync::Arc;
+use crate::html_parser::HtmlParser;
 
 /// The primary state controller for the web browser engine.
 ///
@@ -89,6 +90,11 @@ impl Browser {
     pub fn load(&mut self, url: Url) {
         match url.request() {
             Ok(body) => {
+                let mut parser = HtmlParser {
+                    body: body.clone(),
+                    unfinished: vec![]
+                };
+                println!("{:#?}", parser.parse());
                 self.tokens = Browser::lex(&body);
             }
             Err(e) => {

@@ -15,7 +15,7 @@ use std::rc::Rc;
 /// * `Text(Text)`
 ///   Represents a plain text element. The `Text` type contains the actual string data
 ///   for the text content.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum HtmlNodeType {
     Element(Element),
     Text(Text)
@@ -74,12 +74,21 @@ pub struct HtmlNode {
     pub(crate) parent: Option<Rc<RefCell<HtmlNode>>>
 }
 
+impl std::fmt::Debug for HtmlNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HtmlNode")
+            .field("node_type", &self.node_type)
+            .field("children", &self.children)
+            .finish()
+    }
+}
+
 impl HtmlNode {
-    pub(crate) fn new(node_type: HtmlNodeType) -> HtmlNode {
+    pub(crate) fn new(node_type: HtmlNodeType, parent: Option<Rc<RefCell<HtmlNode>>>) -> HtmlNode {
         HtmlNode {
             node_type,
             children: vec![],
-            parent: None,
+            parent,
         }
     }
 }
@@ -103,6 +112,7 @@ impl HtmlNode {
 /// ```
 /// struct
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct Element {
     pub(crate) tag: String
 }
@@ -127,6 +137,7 @@ pub struct Element {
 /// ```
 /// ```
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct Text {
     pub(crate) text: String
 }
