@@ -97,6 +97,7 @@ impl HtmlParser {
     }
 
     fn add_text(&mut self, text: &String)  {
+        if text.trim().is_empty() {return;}
         match self.unfinished.last_mut() {
             None => {
                 panic!("No parent node found for text node");
@@ -153,6 +154,9 @@ impl HtmlParser {
     ///   associating them with their parent nodes.
     /// ```
     fn add_tag(&mut self, tag: &String) {
+        if tag.starts_with('!') {
+            return;
+        }
         if tag.starts_with('/') {
             if self.unfinished.len() == 1 {return;}
             match self.unfinished.pop() {
