@@ -1,5 +1,8 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 use crate::layout::{Layout, HEIGHT};
-use crate::node::{Element, Text, HtmlNodeType};
+use crate::node::{Element, Text, HtmlNodeType, HtmlNode};
 use crate::url::Url;
 use eframe::egui;
 use egui::{Color32, Galley, Pos2};
@@ -39,6 +42,7 @@ pub struct Browser {
     context: egui::Context,
     /// The raw, sanitized text content extracted from the source HTML.
     body: String,
+    nodes: Option<Rc<RefCell<HtmlNode>>>
 }
 
 
@@ -57,6 +61,7 @@ impl Default for Browser {
             scroll_y: 0.0,
             context: egui::Context::default(),
             body: String::new(),
+            nodes: None
         }
     }
 }
@@ -94,8 +99,7 @@ impl Browser {
                     body: body.clone(),
                     unfinished: vec![]
                 };
-                println!("{:#?}", parser.parse());
-                self.tokens = Browser::lex(&body);
+                self.nodes =  Some(parser.parse());
             }
             Err(e) => {
                 eprintln!("Error loading URL: {}", e);
@@ -153,7 +157,7 @@ impl Browser {
                 }
                 '>' => {
                     in_tag = false;
-                    output.push(HtmlNodeType::Element(Element {tag: buffer.clone()}));
+                    output.push(HtmlNodeType::Element(Element {tag: buffer.clone(), attributes: HashMap::new()}));
                     buffer.clear();
                 },
                 _ => {
@@ -333,7 +337,7 @@ impl eframe::App for Browser {
     /// ```
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.texts.is_empty() {
-            let layout = Layout::new(&self.tokens.clone(), ctx.clone());
+            let layout = Layout::new(self.nodes.clone().unwrap().clone(), ctx.clone());
             self.texts = layout.texts;
         }
 

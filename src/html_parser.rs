@@ -1,6 +1,43 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use crate::node::{Element, HtmlNode, HtmlNodeType, Text};
+
+/// ```
+/// A constant array that defines a list of HTML void elements (self-closing tags).
+///
+/// Void elements are HTML elements that do not have closing tags and cannot contain any child elements.
+/// These elements are self-contained and are used for embedding resources or standalone content.
+///
+/// The array consists of the following elements:
+/// - `"area"`: Defines a clickable area within an image map.
+/// - `"base"`: Specifies the base URL for all relative URLs in the document.
+/// - `"br"`: Inserts a line break.
+/// - `"col"`: Specifies column properties for `<colgroup>` elements in tables.
+/// - `"embed"`: Embeds external content, such as multimedia or applications.
+/// - `"hr"`: Creates a horizontal rule or thematic break.
+/// - `"img"`: Embeds an image into the document.
+/// - `"input"`: Represents an input control for user interaction.
+/// - `"link"`: Specifies a relationship between the document and an external resource, typically used to link stylesheets.
+/// - `"meta"`: Provides metadata about the document, such as character encoding or viewport settings.
+/// - `"param"`: Defines parameters for plugins or embedded objects.
+/// - `"source"`: Specifies multiple media resources for `<audio>` or `<video>` elements.
+/// - `"track"`: Provides text tracks for `<video>` or `<audio>` elements, such as subtitles or captions.
+/// - `"wbr"`: Suggests a line break opportunity.
+///
+/// # Usage
+/// This constant is useful when processing or validating HTML content, ensuring proper handling of self-closing tags.
+///
+/// # Example
+/// ```
+/// if VOID_TAGS.contains(&"img") {
+///     println!("'img' is a void HTML element!");
+/// }
+/// ```
+/// ```
+const VOID_TAGS: [&str; 14] = ["area", "base", "br", "col", "embed", "hr", "img", "input", "link",
+    "meta", "param", "source", "track", "wbr"];
+
 
 /// ```rust
 /// A simple HTML parser structure designed to hold and manipulate the body content of an HTML document.
@@ -110,55 +147,47 @@ impl HtmlParser {
         }
     }
 
-    /// ```rust
-    /// Adds a new tag to the current HTML tree structure.
-    ///
-    /// This method processes an HTML tag and updates the tree structure accordingly.
-    /// If the tag starts with a `/` (indicating a closing tag), it pops the most recently
-    /// added node from the `unfinished` stack and appends it as a child of the parent node.
-    /// If the tag does not start with `/`, it creates a new `HtmlNode` with the specified
-    /// tag and adds it to the `unfinished` stack.
+    /// Adds an HTML tag to the current structure being built.
     ///
     /// # Parameters
-    /// - `tag`: A reference to a `String` representing the tag to be added. If it's a closing
-    ///   tag (starts with '/'), it signifies the end of the current child node and completes its
-    ///   association with the parent node.
+    /// - `tag`: A reference to the string representing the HTML tag to be added.
     ///
     /// # Behavior
-    /// - If a closing tag (`tag.starts_with('/')`) is encountered:
-    ///   - The most recently added node is removed (popped) from the `unfinished` stack.
-    ///   - The node is then treated as a completed child and added to its parent node's children list.
-    ///   - If the stack is empty (unexpected closing tag), the method returns early without any modifications.
-    /// - If an opening tag is encountered:
-    ///   - A new `HtmlNode` is created with the given tag.
-    ///   - The parent of this new node is set to the node currently at the top of the `unfinished` stack.
-    ///   - The new node is wrapped in a `Rc<RefCell<_>>` and pushed onto the `unfinished` stack.
+    /// This method handles three main cases based on the provided tag:
+    ///
+    /// 1. **Ignorable Tags**:
+    ///    - If the tag starts with a `!`, the method immediately returns without making modifications.
+    ///      These tags are considered ignorable.
+    ///
+    /// 2. **Closing Tags**:
+    ///    - If the tag starts with a `/`, it indicates a closing tag. The method attempts to:
+    ///        - Ensure there is at least one unfinished node. If no parent node exists and `unfinished`
+    ///          is empty or cannot safely close a tag, it will either return or panic.
+    ///        - Pop the most recent unfinished node, fetch its parent (if present), and attach the
+    ///          popped node as its child.
+    ///
+    /// 3. **Void Tags**:
+    ///    - If the tag is present in `VOID_TAGS`, it creates a new node representing the void tag:
+    ///        - The method checks for the latest parent node in the `unfinished` stack.
+    ///        - If no parent exists, it panics. Otherwise, a new `HtmlNode` is created and added
+    ///          to the parent's children.
+    ///
+    /// 4. **Other Tags**:
+    ///    - For standard tags that neither start with `/` nor `!` and are not void tags:
+    ///        - The method determines the parent (if any) of the new tag.
+    ///        - A new `HtmlNode` is created with the given tag and added to the `unfinished` stack
+    ///          for further processing of its children or closure.
     ///
     /// # Panics
-    /// - If this method is invoked when the `unfinished` stack is empty (and a non-closing tag is processed),
-    ///   it will panic while attempting to access the last element of the stack.
+    /// - When attempting to add a closing tag and no parent node exists in `unfinished`.
+    /// - When attempting to add a void tag and no parent node exists in `unfinished`.
     ///
-    /// # Example
-    /// ```rust
-    /// let mut tree_builder = HtmlTreeBuilder::new();
-    /// tree_builder.add_tag(&"html".to_string());
-    /// tree_builder.add_tag(&"head".to_string());
-    /// tree_builder.add_tag(&"/head".to_string());
-    /// tree_builder.add_tag(&"body".to_string());
-    /// tree_builder.add_tag(&"/body".to_string());
-    /// tree_builder.add_tag(&"/html".to_string());
-    /// ```
-    /// In this example:
-    /// - Opening tags `html`, `head`, and `body` are added as nested nodes to form a tree structure.
-    /// - Closing tags `/head`, `/body`, and `/html` signal the completion of their corresponding nodes,
-    ///   associating them with their parent nodes.
-    /// ```
     fn add_tag(&mut self, tag: &String) {
         if tag.starts_with('!') {
             return;
         }
         if tag.starts_with('/') {
-            if self.unfinished.len() == 1 {return;}
+            if self.unfinished.len() == 1 { return; }
             match self.unfinished.pop() {
                 None => {
                     panic!("No parent node found for closing tag");
@@ -166,6 +195,17 @@ impl HtmlParser {
                 Some(node) => {
                     let parent = self.unfinished.last_mut().unwrap();
                     parent.borrow_mut().children.push(Rc::clone(&node));
+                }
+            }
+        } else if VOID_TAGS.contains(&tag.as_str()) {
+             match self.unfinished.last_mut() {
+                None => {
+                    panic!("No parent node found for void tag");
+                }
+                Some(parent) => {
+                    let node = HtmlNode::new(
+                        HtmlNodeType::Element(get_attributes(tag)), Some(Rc::clone(&parent)));
+                    parent.borrow_mut().children.push(Rc::new(RefCell::new(node)));
                 }
             }
         } else {
@@ -176,11 +216,29 @@ impl HtmlParser {
                 true => {None}
             };
             let node = HtmlNode::new(
-                HtmlNodeType::Element(Element{tag: tag.clone()}), parent);
+                HtmlNodeType::Element(get_attributes(tag)), parent);
             self.unfinished.push(Rc::new(RefCell::new(node)));
         }
     }
 
+    /// ```rust
+    /// Finalizes the construction of an HTML tree by collapsing all unfinished nodes
+    /// into a single structured tree and returns the root node.
+    ///
+    /// This method works by iteratively popping nodes from the `unfinished` stack,
+    /// attaching each node as a child to its parent (the last node in the stack),
+    /// until only one root node remains. The root node is then returned.
+    ///
+    /// # Returns
+    ///
+    /// A reference-counted `Rc<RefCell<HtmlNode>>` representing the root of the completed HTML tree.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the `unfinished` stack is empty when it attempts
+    /// to `pop`. It assumes that there is at least one node in the `unfinished` stack
+    /// when it is called.
+    /// ```
     fn finish(&mut self) -> Rc<RefCell<HtmlNode>> {
         while self.unfinished.len() > 1 {
             let node = self.unfinished.pop().unwrap();
@@ -189,5 +247,84 @@ impl HtmlParser {
         }
         self.unfinished.pop().unwrap()
     }
+
+
+}
+
+/// ```
+/// Parses a string representation of an HTML element and extracts the tag name
+/// along with its attributes into an `Element` struct.
+///
+/// # Arguments
+///
+/// * `text` - A string slice representing an HTML element-like string.
+///   - The first word is treated as the tag name.
+///   - Subsequent words are treated as attributes in either `key=value` pairs or
+///     standalone keys.
+///
+/// # Returns
+///
+/// Returns an `Element` struct containing the tag name and a `HashMap`
+/// of attribute keys and values. The tag name and attribute keys are
+/// converted to lowercase for consistency. Quotation marks around attribute
+/// values are trimmed (if present).
+///
+/// # Behavior
+///
+/// - Attributes in the form `key=value` will be parsed into corresponding
+///   key-value pairs. Quotation marks around `value` are removed.
+/// - Attributes without `=` will be added as keys with an empty string as the value.
+/// - If `text` is empty or improperly formatted, it assumes the first word is the tag name
+///   and remaining words are attributes.
+///
+/// # Example
+///
+/// ```
+/// let text = "img src='image.jpg' alt=\"Picture\" readonly";
+/// let element = get_attributes(text);
+///
+/// assert_eq!(element.tag, "img");
+/// assert_eq!(element.attributes.get("src").unwrap(), "image.jpg");
+/// assert_eq!(element.attributes.get("alt").unwrap(), "Picture");
+/// assert_eq!(element.attributes.get("readonly").unwrap(), "");
+/// ```
+///
+/// # Notes
+///
+/// - The function assumes the input will follow an HTML-like structure.
+/// - Improperly formatted input may result in incorrect parsing outcomes.
+///
+/// # Dependencies
+///
+/// This function requires the `std::collections::HashMap` crate for
+/// attribute storage.
+///
+/// # Errors
+///
+/// No explicit error handling is implemented; malformed input may lead
+/// to unexpected behavior, such as panics or invalid attribute values.
+///
+/// ```
+/// ```
+fn get_attributes(text: &str) -> Element {
+    let parts: Vec<&str> = text.split_whitespace().collect();
+    let tag = parts[0].to_lowercase();
+    let mut attributes = HashMap::<String, String>::new();
+    for attrpair in parts[1..].iter() {
+        if attrpair.contains('=') {
+            let kv: Vec<&str> = attrpair.split('=').collect();
+            let key = kv[0].to_string();
+            let mut value = kv[1].to_string();
+            if value.len() > 2 && (value.starts_with('\'') || value.starts_with('"')) {
+                value = value.trim_matches(|c| c == '\'' || c == '"').parse().unwrap();
+            }
+            attributes.insert(key.to_lowercase(), value);
+        } else {
+            attributes.insert(attrpair.to_string().to_lowercase(), "".to_string());
+        }
+    }
+
+    Element{tag: tag.into(),
+        attributes}
 }
 

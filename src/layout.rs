@@ -1,7 +1,9 @@
-﻿use crate::browser::DrawText;
-use crate::node::HtmlNodeType;
+﻿use std::cell::RefCell;
+use std::rc::Rc;
+use crate::browser::DrawText;
+use crate::node::{HtmlNode, HtmlNodeType};
 use eframe::epaint::{Color32, FontFamily, FontId};
-use egui::Context;
+use egui::{Context, TextBuffer};
 use std::sync::Arc;
 
 pub const HSTEP: f32 = 13.0;
@@ -19,7 +21,11 @@ pub struct Layout {
     cursor_x: f32,
     cursor_y: f32,
     context: Context,
-    line: Vec<DrawText>
+    line: Vec<DrawText>,
+    font_name: String,
+    font_id: FontId,
+    space_width: f32,
+
 }
 
 impl Layout {
@@ -45,7 +51,7 @@ impl Layout {
     /// - Iterates through each `Token` in the provided `tokens` vector and processes it
     ///   using the `token` method.
     ///
-    pub fn new(tokens: &Vec<HtmlNodeType>, context: Context) -> Self {
+    pub fn new(node: Rc<RefCell<HtmlNode>>, context: Context) -> Self {
 
         let mut layout = Self {
             texts: Vec::new(),
@@ -56,13 +62,15 @@ impl Layout {
             context: context.clone(),
             cursor_y: VSTEP,
             cursor_x: HSTEP,
-            line: Vec::new()
-        };
-        //
+            line: Vec::new(),
+            font_name: "".into(),
+            font_id: FontId::default(),
+            space_width: 0.0
 
-        for token in tokens {
-            layout.token(token)
-        }
+        };
+
+        layout.update_font();
+        layout.recurse(node);
 
         layout.flush_line();
 
@@ -154,12 +162,110 @@ impl Layout {
             }
             HtmlNodeType::Text(text) => {
                 for word in text.text.split_whitespace() {
-                    self.word(&font_id, space_width, word);
+                    self.word(word);
                 }
 
             }
         }
 
+    }
+
+    /// Handles opening HTML-like tags and adjusts the corresponding text formatting properties
+    /// or behavior of the object accordingly.
+    ///
+    /// This function is responsible for interpreting specific tags and modifying the object's
+    /// state. It supports a small subset of tags, which adjust font styles, font weights,
+    /// font sizes, or introduce line breaks.
+    ///
+    /// # Parameters
+    /// - `tag`: A `String` representing the tag (such as "i", "b", "big", "small", "br") to be processed.
+    ///
+    /// # Behavior
+    /// - `"i"`: Sets the `font_style` property to `"italic"`.
+    /// - `"b"`: Sets the `font_weight` property to `"bold"`.
+    /// - `"big"`: Increases the `font_size` property by `16.0/3.0`.
+    /// - `"small"`: Decreases the `font_size` property by `8.0/3.0`.
+    /// - `"br"`: Calls the `flush_line` method to perform a line break.
+    /// - Default case (`_`): If the tag does not match any of the above, no action is performed.
+    ///
+    ///
+    /// Note: Tags that are not explicitly handled in the match block are ignored.
+    fn open_tag(&mut self, tag: String)
+    {
+        match tag.as_str() {
+            "i" => {
+                self.font_style = "italic".into();
+                self.update_font()
+            },
+            "b" => {
+                self.font_weight = "bold".into();
+                self.update_font()
+
+            },
+            "big" => {
+                self.font_size += 16.0/3.0;
+                self.update_font()
+            },
+            "small" => {
+                self.font_size -= 8.0/3.0;
+                self.update_font()
+            },
+            "br" => {
+                self.flush_line();
+            }
+            _ => {}
+        }
+    }
+
+    /// Closes a given HTML-like tag and updates the rendering state accordingly.
+    ///
+    /// This function modifies the internal properties of the object to reflect the
+    /// closing of a specified tag. Depending on the tag provided, it performs actions
+    /// such as resetting font styles, adjusting font size, or moving the cursor.
+    ///
+    /// # Parameters
+    /// - `tag` (`String`): The name of the tag being closed. Supported tags are:
+    ///   - `"i"`: Resets the italic font style.
+    ///   - `"b"`: Resets the bold font weight.
+    ///   - `"big"`: Decreases the font size by `16.0 / 3.0`.
+    ///   - `"small"`: Increases the font size by `8.0 / 3.0`.
+    ///   - `"p"`: Flushes the current line, moves the cursor down by a predefined vertical step (`VSTEP`).
+    ///
+    /// Any unsupported or unrecognized tags will be ignored.
+    ///
+    /// # Behavior
+    /// - For `"i"` and `"b"`, the corresponding font properties (`font_style` and
+    ///   `font_weight`) will be reset to an empty string.
+    /// - For font size changes (`"big"` and `"small"`), proper adjustments are applied
+    ///   to the `font_size` property.
+    /// - For the `"p"` tag, the current line is flushed, and the vertical position of
+    ///   the cursor (`cursor_y`) is incremented by the value of `VSTEP`.
+    fn close_tag(&mut self, tag: String)
+    {
+        match tag.as_str() {
+            "i" => {
+                self.font_style = "".into();
+                self.update_font()
+            },
+            "b" => {
+                self.font_weight = "".into();
+                self.update_font()
+            },
+            "big" => {
+                self.font_size -= 16.0/3.0;
+                self.update_font()
+
+            },
+            "small" => {
+                self.font_size += 8.0/3.0;
+                self.update_font()
+            },
+            "p" => {
+                self.flush_line();
+                self.cursor_y += VSTEP;
+            }
+            _ => {}
+        }
     }
 
     /// ```rust
@@ -188,10 +294,10 @@ impl Layout {
     /// - The `row_height` method of the font engine is used to determine the height of a line when moving to a new one.
     /// - The function assumes that `cursor_x` and `cursor_y` are updated globally for text positioning.
     /// ```
-    fn word(&mut self, font_id: &FontId, space_width: f32, word: &str) {
+    fn word(&mut self, word: &str) {
         // Access egui's font engine to measure word dimensions
         let galley = self.context.fonts_mut(|f|
-            f.layout_no_wrap(word.to_string(), font_id.clone(), Color32::BLACK));
+            f.layout_no_wrap(word.to_string(), self.font_id.clone(), Color32::BLACK));
 
         let text_width = galley.size().x;
 
@@ -205,7 +311,7 @@ impl Layout {
                 y: 0.0,
                 galley
             });
-            self.cursor_x += text_width + space_width;
+            self.cursor_x += text_width + self.space_width;
 
 
 
@@ -295,5 +401,86 @@ impl Layout {
         self.cursor_y = baseline + 1.25 * max_descent;
         self.line.clear();
 
+    }
+
+    /// ```rust
+    /// Recursively processes an HTML tree represented by `HtmlNode`.
+    ///
+    /// # Arguments
+    ///
+    /// * `tree` - A reference-counted, mutable `HtmlNode` wrapped in a `RefCell`.
+    ///
+    /// The function determines the type of the node (`Element` or `Text`) and takes the
+    /// appropriate actions based on the node type. For `Element` nodes:
+    /// - The function opens a tag for the element using `self.open_tag`.
+    /// - Recursively processes each of its child nodes.
+    /// - Closes the tag for the element using `self.close_tag`.
+    ///
+    /// For `Text` nodes:
+    /// - Splits the text into whitespace-separated words.
+    /// - Processes each word individually using `self.word`.
+    ///
+    /// Internally, the node's properties are borrowed immutably to enable safe access.
+    /// The `Action` enum is used as an intermediate abstraction to encapsulate what needs
+    /// to be done for a particular node type.
+    ///
+    /// # Node Types
+    ///
+    /// - `HtmlNodeType::Element`: Represents an element node with a tag name and children.
+    /// - `HtmlNodeType::Text`: Represents a text node containing text content.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let root_node = Rc::new(RefCell::new(HtmlNode::new_element("div")));
+    /// let child_text = Rc::new(RefCell::new(HtmlNode::new_text("Hello, World!")));
+    /// root_node.borrow_mut().children.push(child_text.clone());
+    ///
+    /// let mut processor = HtmlTreeProcessor::new();
+    /// processor.recurse(root_node);
+    /// ```
+    ///
+    /// The above example demonstrates creating an `HtmlNode` tree with a `div` element
+    /// containing a text node. The `recurse` function processes this tree recursively.
+    /// ```
+    fn recurse(&mut self, tree: Rc<RefCell<HtmlNode>>) {
+        enum Action {
+            ProcessElement { tag: String, children: Vec<Rc<RefCell<HtmlNode>>> },
+            ProcessText(String),
+        }
+
+        let action = {
+            let borrowed = tree.borrow();
+            match &borrowed.node_type {
+                HtmlNodeType::Element(ele) => Action::ProcessElement {
+                    tag: ele.tag.clone().into(),
+                    children: borrowed.children.clone(),
+                },
+                HtmlNodeType::Text(txt) => Action::ProcessText(txt.text.clone()),
+            }
+        };
+
+        match action {
+            Action::ProcessElement { tag, children } => {
+                self.open_tag(tag.clone());
+                for child in children {
+                    self.recurse(child);
+                }
+                self.close_tag(tag);
+            }
+            Action::ProcessText(text) => {
+                for word in text.split_whitespace() {
+                    self.word(word);
+                }
+            }
+        }
+    }
+
+    fn update_font(&mut self) {
+        let font_name = format!("{}{}{}", self.font_family, self.font_weight, self.font_style);
+        self.font_id = FontId::new(self.font_size, FontFamily::Name(Arc::from(font_name.clone())));
+        let space_galley = self.context.fonts_mut(|f|
+            f.layout_no_wrap(" ".to_string(), self.font_id.clone(), Color32::BLACK));
+        self.space_width = space_galley.size().x;
     }
 }

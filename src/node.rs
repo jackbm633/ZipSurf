@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Represents a node in a document structure, which can either be a tag or plain text.
@@ -114,7 +115,8 @@ impl HtmlNode {
 #[derive(Clone)]
 #[derive(Debug)]
 pub struct Element {
-    pub(crate) tag: String
+    pub(crate) tag: String,
+    pub attributes: HashMap<String, String>,
 }
 
 /// ```rust
