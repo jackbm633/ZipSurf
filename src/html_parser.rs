@@ -38,7 +38,28 @@ use crate::node::{Element, HtmlNode, HtmlNodeType, Text};
 const VOID_TAGS: [&str; 14] = ["area", "base", "br", "col", "embed", "hr", "img", "input", "link",
     "meta", "param", "source", "track", "wbr"];
 
-
+/// A constant array of HTML tag names commonly used within the `<head>` section of a document.
+///
+/// # Tags Included:
+/// - `"title"`: Specifies the title of the document, shown in the browser's title bar or tab.
+/// - `"meta"`: Provides metadata about the document, such as character set, viewport settings, or descriptions.
+/// - `"link"`: Defines relationships to external resources, like stylesheets or icons.
+/// - `"style"`: Contains internal CSS styles to be applied to the document.
+/// - `"script"`: Embeds or references JavaScript code for dynamic behavior.
+/// - `"noscript"`: Specifies alternate content for users with JavaScript disabled.
+/// - `"base"`: Defines a base URL for relative URLs in the document.
+///
+/// # Usage:
+/// This array can be used for validating or generating `<head>` elements in HTML parsing, rendering,
+/// or manipulation tasks.
+///
+/// # Example:
+/// ```rust
+/// for tag in HEAD_TAGS.iter() {
+///     println!("Supported head tag: {}", tag);
+/// }
+/// ```
+const HEAD_TAGS: [&str; 7] = ["title", "meta", "link", "style", "script", "noscript", "base"];
 /// ```rust
 /// A simple HTML parser structure designed to hold and manipulate the body content of an HTML document.
 ///
@@ -135,6 +156,7 @@ impl HtmlParser {
 
     fn add_text(&mut self, text: &String)  {
         if text.trim().is_empty() {return;}
+        self.implicit_tags(None);
         match self.unfinished.last_mut() {
             None => {
                 panic!("No parent node found for text node");
@@ -147,46 +169,65 @@ impl HtmlParser {
         }
     }
 
-    /// Adds an HTML tag to the current structure being built.
+    /// Adds a tag to the HTML document structure being built.
+    ///
+    /// This function processes a given tag by analyzing its type and
+    /// appropriately modifies the internal state of the structure. It handles
+    /// standard, void, and closing tags while maintaining a stack of
+    /// unfinished nodes.
     ///
     /// # Parameters
-    /// - `tag`: A reference to the string representing the HTML tag to be added.
+    /// - `tag`: A string slice representing the HTML tag to be processed.
     ///
     /// # Behavior
-    /// This method handles three main cases based on the provided tag:
+    /// 1. Parses the tag using the `get_attributes` function to extract its attributes
+    ///    and determine its type.
+    /// 2. If the tag starts with `!` (e.g., an HTML comment or doctype), no further processing is done, and the function returns early.
+    /// 3. If the tag starts with `/` (a closing tag):
+    ///     - If there is only one node in the `unfinished` stack, the function returns.
+    ///     - If a parent node exists in the `unfinished` stack, the current node is popped
+    ///       and added as a child of its parent.
+    ///     - If no parent node is found, the function panics with an error message.
+    /// 4. If the tag belongs to the `VOID_TAGS` set (e.g., `<img>`, `<br>`), it does the following:
+    ///     - Ensures there is a current parent node in the `unfinished` stack.
+    ///     - Creates a new `HtmlNode` for the void tag and appends it as a child to the current parent.
+    ///     - Panics if no parent node is found.
+    /// 5. For standard (non-void, non-closing) tags:
+    ///     - Determines the parent node from the `unfinished` stack, if one exists.
+    ///     - Creates a new `HtmlNode` for the tag and pushes it onto the `unfinished` stack.
     ///
-    /// 1. **Ignorable Tags**:
-    ///    - If the tag starts with a `!`, the method immediately returns without making modifications.
-    ///      These tags are considered ignorable.
+    /// # Errors
+    /// - Panics if a closing tag is processed without an appropriate parent node in the `unfinished` stack.
+    /// - Panics if a void tag is processed without a parent node in the `unfinished` stack.
     ///
-    /// 2. **Closing Tags**:
-    ///    - If the tag starts with a `/`, it indicates a closing tag. The method attempts to:
-    ///        - Ensure there is at least one unfinished node. If no parent node exists and `unfinished`
-    ///          is empty or cannot safely close a tag, it will either return or panic.
-    ///        - Pop the most recent unfinished node, fetch its parent (if present), and attach the
-    ///          popped node as its child.
+    /// # Notes
+    /// - The function utilizes the `implicit_tags` method with the current tag for specific behavior
+    ///   customization.
+    /// - The `VOID_TAGS` set is used as a reference for identifying self-closing tags.
     ///
-    /// 3. **Void Tags**:
-    ///    - If the tag is present in `VOID_TAGS`, it creates a new node representing the void tag:
-    ///        - The method checks for the latest parent node in the `unfinished` stack.
-    ///        - If no parent exists, it panics. Otherwise, a new `HtmlNode` is created and added
-    ///          to the parent's children.
+    /// # Example
+    /// ```
+    /// let mut parser = HtmlParser::new();
+    /// parser.add_tag("<div>");
+    /// parser.add_tag("<img src='image.png'>");
+    /// parser.add_tag("</div>");
+    /// ```
     ///
-    /// 4. **Other Tags**:
-    ///    - For standard tags that neither start with `/` nor `!` and are not void tags:
-    ///        - The method determines the parent (if any) of the new tag.
-    ///        - A new `HtmlNode` is created with the given tag and added to the `unfinished` stack
-    ///          for further processing of its children or closure.
-    ///
-    /// # Panics
-    /// - When attempting to add a closing tag and no parent node exists in `unfinished`.
-    /// - When attempting to add a void tag and no parent node exists in `unfinished`.
-    ///
-    fn add_tag(&mut self, tag: &String) {
-        if tag.starts_with('!') {
+    /// The above example constructs an HTML structure equivalent to:
+    /// ```html
+    /// <div>
+    ///     <img src="image.png" />
+    /// </div>
+    fn add_tag(&mut self, tag: &str) {
+        let element = get_attributes(tag);
+
+        if element.tag.starts_with('!') {
             return;
         }
-        if tag.starts_with('/') {
+
+        self.implicit_tags(Some(&*element.tag));
+
+        if element.tag.starts_with('/') {
             if self.unfinished.len() == 1 { return; }
             match self.unfinished.pop() {
                 None => {
@@ -197,14 +238,14 @@ impl HtmlParser {
                     parent.borrow_mut().children.push(Rc::clone(&node));
                 }
             }
-        } else if VOID_TAGS.contains(&tag.as_str()) {
+        } else if VOID_TAGS.contains(&element.tag.as_str()) {
              match self.unfinished.last_mut() {
                 None => {
                     panic!("No parent node found for void tag");
                 }
                 Some(parent) => {
                     let node = HtmlNode::new(
-                        HtmlNodeType::Element(get_attributes(tag)), Some(Rc::clone(&parent)));
+                        HtmlNodeType::Element(element), Some(Rc::clone(&parent)));
                     parent.borrow_mut().children.push(Rc::new(RefCell::new(node)));
                 }
             }
@@ -216,7 +257,7 @@ impl HtmlParser {
                 true => {None}
             };
             let node = HtmlNode::new(
-                HtmlNodeType::Element(get_attributes(tag)), parent);
+                HtmlNodeType::Element(element), parent);
             self.unfinished.push(Rc::new(RefCell::new(node)));
         }
     }
@@ -240,6 +281,9 @@ impl HtmlParser {
     /// when it is called.
     /// ```
     fn finish(&mut self) -> Rc<RefCell<HtmlNode>> {
+        if (self.unfinished.is_empty()) {
+            self.implicit_tags(None);
+        }
         while self.unfinished.len() > 1 {
             let node = self.unfinished.pop().unwrap();
             let parent = self.unfinished.last_mut().unwrap();
@@ -248,7 +292,92 @@ impl HtmlParser {
         self.unfinished.pop().unwrap()
     }
 
+    /// Handles the insertion of implicit tags when parsing an HTML document structure.
+    /// This function ensures that certain structural elements, such as `<html>`, `<head>`,
+    /// and `<body>`, are added where necessary to conform to standard HTML rules.
+    ///
+    /// # Arguments
+    ///
+    /// * `tag` - An optional reference to a string slice representing the currently
+    ///   processed tag. If `tag` is `None`, this function determines what adjustments
+    ///   to make based on the state of the `unfinished` stack alone.
+    ///
+    /// # Behavior
+    ///
+    /// This function implements the following logic:
+    ///
+    /// 1. Iterates over the `unfinished` stack (which represents the hierarchy of open
+    ///    tags being parsed) to extract the tag names of open elements, skipping text
+    ///    nodes.
+    /// 2. Constructs a list of open tags (`open_tags`) to determine the current parsing context.
+    /// 3. Based on the HTML parsing context and the incoming tag:
+    ///    - If no tags are open and the incoming tag is not "html", it adds a `<html>` tag.
+    ///    - If only the `<html>` tag is open and the incoming tag requires either a `<head>`
+    ///      or `<body>` context (depending on the tag), it adds the appropriate tag.
+    ///    - If both `<html>` and `<head>` tags are open and the tag should not appear
+    ///      within `<head>`, it closes the `<head>` tag by adding a `</head>` tag.
+    /// 4. Repeats the adjustment logic in a loop until no further implicit tags need to be added.
+    ///
+    /// # Notes
+    ///
+    /// * This function relies on the presence of `unfinished`, a stack-like structure
+    ///   of open HTML nodes being processed, and `HEAD_TAGS`, a predefined set of tags
+    ///   that are valid within the `<head>` element.
+    /// * Invokes `self.add_tag(tag)` to programmatically add the necessary implicit tags
+    ///   to maintain the document's structure.
+    ///
+    /// # Example
+    ///
+    /// Assume `HEAD_TAGS = ["title", "meta", "link", "style"]`.
+    /// When parsing the following snippet:
+    ///
+    /// ```html
+    /// <title>My Page</title>
+    /// <p>Hello World!</p>
+    /// ```
+    ///
+    /// The function will implicitly add `<html>`, `<head>`, and `<body>` as follows:
+    ///
+    /// ```html
+    /// <html>
+    ///   <head>
+    ///     <title>My Page</title>
+    ///   </head>
+    ///   <body>
+    ///     <p>Hello World!</p>
+    ///   </body>
+    /// </html>
+    /// ```
+    ///
+    /// This mechanism ensures the document's structure adheres to HTML standards.
+    fn implicit_tags(&mut self, tag: Option<&str>) {
+        loop {
+            let open_tags = self.unfinished.iter().map(|n| {
+                match &n.borrow().node_type {
+                    HtmlNodeType::Element(ele) => {
+                        Some(ele.tag.clone())
+                    }
+                    HtmlNodeType::Text(_) => {None}
+                }
+            }).filter(|t| t.is_some())
+                .map(|t| t.unwrap())
+                .collect::<Vec<_>>();
 
+            if open_tags.is_empty() && tag.is_some() && tag.unwrap() != "html" {
+                self.add_tag("html");
+            } else if open_tags == ["html"] && tag.is_some() && match tag.unwrap() {"head" | "body" | "/html" => false, _ => true} {
+                if HEAD_TAGS.contains(&tag.unwrap()) {
+                    self.add_tag("head");
+                } else {
+                    self.add_tag("body");
+                }
+            } else if open_tags == ["html", "head"] && tag.is_some() && !HEAD_TAGS.contains(&tag.unwrap()) && tag.unwrap() != "/head" {
+                self.add_tag("/head");
+            } else {
+                break;
+            }
+        }
+    }
 }
 
 /// ```
