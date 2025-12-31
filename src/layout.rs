@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crate::browser::DrawText;
 use crate::node::{HtmlNode, HtmlNodeType};
 use eframe::epaint::{Color32, FontFamily, FontId};
-use egui::{Context, TextBuffer};
+use egui::{Context};
 use std::sync::Arc;
 
 pub const HSTEP: f32 = 13.0;
@@ -11,9 +11,314 @@ pub const VSTEP: f32 = 17.0;
 
 pub const WIDTH: f32 = 800.0;
 pub const HEIGHT: f32 = 600.0;
-pub struct Layout {
-    /// A collection of positioned text elements ready for rendering.
-    pub(crate) texts: Vec<DrawText>,
+
+/// Represents a node in the layout tree, which corresponds to an element in the
+/// HTML document and stores layout-related information for rendering.
+///
+/// # Fields
+///
+/// * `node` - A reference-counted, mutable reference to the corresponding HTML node
+///            in the DOM. This provides access to the attributes, tag name, and other
+///            relevant properties of the HTML element.
+///
+/// * `parent` - An `Option` containing a reference-counted, mutable reference to the
+///              parent layout node, if it exists. This links the node to its parent
+///              in the tree structure.
+///
+/// * `children` - A vector of reference-counted, mutable references to the child
+///                layout nodes. This represents the hierarchical relationships between
+///                nodes, allowing traversal of the layout tree.
+///
+/// * `previous` - An `Option` containing a reference-counted, mutable reference to the
+///                previous sibling layout node, if it exists. This facilitates sibling
+///                traversal within the tree.
+///
+/// * `content` - Specifies the type of content this layout node represents. This could be
+///               information about text, inline elements, or blocks, as represented by
+///               the `LayoutNodeType` enum.
+///
+/// * `display_list` - A reference-counted, mutable reference to a vector of `DrawText`
+///                    objects, which form the display list for rendering. This contains
+///                    drawing instructions (e.g., positioning and styles) for the graphical
+///                    representation of the node.
+pub struct LayoutNode {
+    node: Rc<RefCell<HtmlNode>>,
+    parent: Option<Rc<RefCell<LayoutNode>>>,
+    children: Vec<Rc<RefCell<LayoutNode>>>,
+    previous: Option<Rc<RefCell<LayoutNode>>>,
+    content: LayoutNodeType,
+    pub(crate) display_list: Rc<RefCell<Vec<DrawText>>>
+}
+
+impl LayoutNode {
+    /// Creates a new layout node representing a document.
+    ///
+    /// # Parameters
+    /// - `node`: A reference-counted, mutable container (`Rc<RefCell<HtmlNode>>`) that represents
+    ///   the associated HTML node for this layout node.
+    ///
+    /// # Returns
+    /// - A reference-counted, mutable container (`Rc<RefCell<LayoutNode>>`) encapsulating the newly
+    ///   created layout node.
+    ///
+    /// # Description
+    /// This function initializes and returns a new `LayoutNode` instance configured as a document
+    /// node. The `LayoutNode` is created with the following properties:
+    /// - `node`: The provided HTML node reference.
+    /// - `parent`: Set to `None`, indicating no parent node.
+    /// - `children`: An empty vector, as no child nodes are present initially.
+    /// - `previous`: Set to `None`, indicating no sibling node.
+    /// - `content`: Set to `LayoutNodeType::Document`, specifying its type as a document node.
+    /// - `display_list`: An empty vector wrapped in a reference-counted and mutable container
+    ///   (`Rc<RefCell>`), intended for storing renderable items.
+    ///
+    /// This is a utility method useful for layout tree creation in browsers or UI systems.
+    pub fn new_document(node: Rc<RefCell<HtmlNode>>) -> Rc<RefCell<LayoutNode>> {
+        Rc::new(RefCell::new(Self {
+            node,
+            parent: None,
+            children: Vec::new(),
+            previous: None,
+            content: LayoutNodeType::Document,
+            display_list: Rc::new(RefCell::new(Vec::new()))
+        }))
+    }
+
+    /// Creates a new `LayoutNode` of type `Block` with default styling and layout attributes.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - A reference-counted and mutable `HtmlNode` associated with this layout node.
+    /// * `parent` - An `Option` encapsulating a reference-counted and mutable parent `LayoutNode`.
+    ///              Specifies the parent layout node in the layout tree hierarchy, or `None` if it is the root.
+    /// * `previous` - An `Option` encapsulating a reference-counted and mutable previous sibling `LayoutNode`.
+    ///                Specifies the layout node that comes directly before this node in the layout tree structure,
+    ///                or `None` if it is the first child.
+    /// * `context` - A `Context` object that represents the environment or settings to be carried over for
+    ///               this layout node (e.g., shared properties, rendering context).
+    ///
+    /// # Returns
+    ///
+    /// A reference-counted and mutable `LayoutNode` (`Rc<RefCell<LayoutNode>>`) with the following attributes:
+    /// - Contains no children initially (`children` is empty).
+    /// - Configures the node's content type as `LayoutNodeType::Block`, which holds styling information, such as:
+    ///     * `font_family`: Defaults to `"sans"`.
+    ///     * `font_weight`, `font_style`: Empty strings (default values).
+    ///     * `font_size`: Defaults to `16.0`.
+    ///     * `context`: Cloned from the given `context`.
+    ///     * `cursor_y`, `cursor_x`: Default offsets (`VSTEP` and `HSTEP` respectively) for layout starting positions.
+    ///     * `line`: Initialized empty (`Vec::new()`).
+    ///     * `font_id`: Defaults to `FontId::default()`.
+    ///     * `space_width`: Defaults to `0.0`.
+    ///     * `display_list`: An empty display list (`vec![]`) for rendering content.
+    /// - Takes a `parent` and `previous` node if provided.
+    /// - Initializes its own `display_list` as an empty, reference-counted mutable vector.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// let html_node = Rc::new(RefCell::new(HtmlNode::new()));
+    /// let parent_node = Rc::new(RefCell::new(LayoutNode::new()));
+    /// let context = Context::new();
+    ///
+    /// let layout_node = LayoutNode::new_block(
+    ///     html_node,
+    ///     Some(parent_node),
+    ///     None,
+    ///     context
+    /// );
+    /// ```
+    pub fn new_block(node: Rc<RefCell<HtmlNode>>,
+                     parent: Option<Rc<RefCell<LayoutNode>>>,
+                     previous: Option<Rc<RefCell<LayoutNode>>>,
+                     context: Context) -> Rc<RefCell<LayoutNode>> {
+        Rc::new(RefCell::new(Self {
+            node,
+            parent,
+            children: vec![],
+            content: LayoutNodeType::Block(
+                BlockLayout{
+                    font_family: "sans".to_string(),
+                    font_weight: "".to_string(),
+                    font_style: "".to_string(),
+                    font_size: 16.0,
+                    context: context.clone(),
+                    cursor_y: VSTEP,
+                    cursor_x: HSTEP,
+                    line: Vec::new(),
+                    font_id: FontId::default(),
+                    space_width: 0.0,
+                    display_list: vec![]
+                }
+            ),
+            previous,
+            display_list: Rc::new(RefCell::new(Vec::new()))
+        }))
+    }
+
+    /// Performs layout processing on a `LayoutNode` based on its type (`Block` or `Document`)
+    /// and updates its display list accordingly.
+    ///
+    /// # Parameters
+    /// - `node`: A `Rc<RefCell<LayoutNode>>` representing the layout node to be processed.
+    /// - `context`: A `Context` object providing relevant layout context or configuration.
+    ///
+    /// # Functionality
+    /// 1. **Determine Node Type**:
+    ///    - Checks whether the `LayoutNode` is of type `Block` or `Document` by pattern matching the `content` field.
+    ///
+    /// 2. **Handle Block Nodes**:
+    ///    - Prepares `inner_node_ptr` by cloning the `node` reference.
+    ///    - Retrieves a mutable borrow of the `node` to perform updates.
+    ///    - Updates the block layout:
+    ///      - Invokes `update_font()` on the block layout.
+    ///      - Recursively performs layout logic using `recurse(inner_node_ptr)`.
+    ///      - Flushes the block's line buffer using `flush_line()`.
+    ///    - Updates the `display_list` property with a clone of the block's display list.
+    ///    - Drops the mutable borrow once updates are complete.
+    ///
+    /// 3. **Handle Document Nodes**:
+    ///    - Clones the `inner_node_ptr` for the document node.
+    ///    - Creates a new `Block` node as a child using `Self::new_block()` with the current context.
+    ///    - Updates the `children` of the current node with the newly created child.
+    ///    - Recursively processes the child node by calling `Self::layout()` to layout its children.
+    ///    - Merges the child's display list with the parent node's display list to ensure proper rendering.
+    ///
+    /// # Notes
+    /// - Borrowing is carefully managed to ensure mutable and immutable borrows do not coexist,
+    ///   using scoped blocks or temporary variables.
+    /// - The `display_list` is synchronously updated between parent and child nodes to maintain a proper rendering hierarchy.
+    ///
+    /// # Dependencies
+    /// - Requires `LayoutNode` to have the following properties:
+    ///   - `content`: Enum of type `LayoutNodeType` (with variants like `Block` and `Document`).
+    ///   - `node`: A reference or pointer to additional node data.
+    ///   - `children`: A mutable vector to store child nodes.
+    ///   - `display_list`: A reference-counted, mutable display list specific to the node.
+    ///
+    /// # Example
+    /// ```rust
+    /// let layout_node = Rc::new(RefCell::new(LayoutNode::new_document()));
+    /// let context = Context::new();
+    /// MyLayoutEngine::layout(layout_node, context);
+    /// ```
+    ///
+    /// In the example above, a `Document` node is processed using the `layout` function,
+    /// which creates child blocks, updates their layout, and synchronizes display lists.
+    pub fn layout(node: Rc<RefCell<LayoutNode>>, context: Context) {
+        println!("Layout node: {:?}", node.borrow().node);
+        // 1. Identify what type of node we are dealing with.
+        // We use a scoped block or a temporary variable to ensure the borrow is dropped immediately.
+        let is_block = matches!(node.borrow().content, LayoutNodeType::Block(_));
+        let is_doc = matches!(node.borrow().content, LayoutNodeType::Document);
+
+        if is_block {
+            // Prepare data needed for the block logic
+            let inner_node_ptr = node.borrow().node.clone();
+
+            // Re-borrow mutably only for the block work
+            let mut node_borrow = node.borrow_mut();
+            if let LayoutNodeType::Block(ref mut block_layout) = node_borrow.content {
+                block_layout.update_font();
+                block_layout.recurse(inner_node_ptr);
+                block_layout.flush_line();
+                node_borrow.display_list = Rc::new(RefCell::new(block_layout.display_list.clone()));
+            }
+            // Borrow is dropped here when node_borrow goes out of scope
+        } else if is_doc {
+            let inner_node_ptr = node.borrow().node.clone();
+
+            // Create the child
+            let child = Self::new_block(inner_node_ptr, Some(node.clone()), None, context.clone());
+
+            // Update children list and drop borrow immediately
+            node.borrow_mut().children.push(child.clone());
+
+            // Perform recursive layout (node is currently unborrowed)
+            Self::layout(child.clone(), context);
+
+            // Sync display lists
+            let child_dl = child.borrow_mut().display_list.clone();
+            node.borrow_mut().display_list.borrow_mut().append(&mut *child_dl.borrow_mut());
+        }
+    }
+}
+
+/// Represents the type of a layout node in a rendering or document processing system.
+///
+/// This enum is used to differentiate between various kinds of layout nodes:
+///
+/// - `Block`: Represents a block-level layout node, encapsulating its specific layout structure (`BlockLayout`).
+/// - `Document`: Represents the root-level node, typically the entire document structure.
+///
+/// # Variants
+///
+/// * `Block(BlockLayout)`
+///   - A block-level layout node, containing a `BlockLayout` structure that defines
+///     specific properties and behaviors for this block layout.
+/// * `Document`
+///   - The root layout node, representing the overall document in the layout tree.
+///
+/// # Example
+/// ```rust
+/// use crate::LayoutNodeType;
+/// use crate::BlockLayout; // assume BlockLayout is imported.
+///
+/// let block_layout = BlockLayout { /* properties */ };
+/// let block_node = LayoutNodeType::Block(block_layout);
+///
+/// let document_node = LayoutNodeType::Document;
+/// ```
+///
+/// This enum can be further extended or customized to accommodate additional layout types in the system.
+enum LayoutNodeType {
+    Block(BlockLayout),
+    Document
+}
+
+/// Represents the layout and formatting attributes for text blocks.
+///
+/// The `BlockLayout` struct is utilized to manage and render text blocks
+/// within a graphical user interface or a similar context. It provides
+/// properties for font customization, cursor positioning, and the internal
+/// data required for drawing the text.
+///
+/// # Fields
+///
+/// * `display_list` - A vector containing `DrawText` elements representing
+///   the individual pieces of text to be drawn on the display.
+///
+/// * `font_family` - A string specifying the font family to be used for text
+///   rendering (e.g., "Arial", "Times New Roman").
+///
+/// * `font_weight` - A string indicating the weight (thickness) of the font
+///   (e.g., "normal", "bold").
+///
+/// * `font_style` - A string defining the style of the font (e.g., "normal",
+///   "italic").
+///
+/// * `font_size` - A floating-point number representing the size of the font
+///   in points.
+///
+/// * `cursor_x` - A floating-point value representing the current horizontal
+///   position of the cursor in the layout.
+///
+/// * `cursor_y` - A floating-point value representing the current vertical
+///   position of the cursor in the layout.
+///
+/// * `context` - A `Context` object containing the necessary information for
+///   managing and rendering the text block within its environment.
+///
+/// * `line` - A vector of `DrawText` elements that represent the text in the
+///   current line being processed or rendered.
+///
+/// * `font_id` - A `FontId` identifying the specific font being used from a
+///   font management system.
+///
+/// * `space_width` - A floating-point value specifying the width of a space
+///   character, which can vary depending on the font and its settings.
+pub struct BlockLayout {
+    pub(crate) display_list: Vec<DrawText>,
     font_family: String,
     font_weight: String,
     font_style: String,
@@ -24,98 +329,9 @@ pub struct Layout {
     line: Vec<DrawText>,
     font_id: FontId,
     space_width: f32,
-
-    pub node: Rc<RefCell<HtmlNode>>,
 }
 
-impl Layout {
-    /// Creates a new `Layout` instance and initializes it with default font properties,
-    /// spacing, and context. This constructor sets up the basic layout configuration
-    /// for rendering or processing HTML-like nodes.
-    ///
-    /// # Parameters
-    /// - `node`: An `Rc<RefCell<HtmlNode>>` that represents a shared HTML-like node structure.
-    ///   This allows multiple references to the same HTML node while allowing mutation through
-    ///   interior mutability.
-    /// - `context`: A `Context` object containing shared or global data required for layout
-    ///   processing or rendering.
-    ///
-    /// # Returns
-    /// A `Layout` instance initialized with the following default values:
-    /// - `texts`: An empty vector to store text elements.
-    /// - `font_family`: Default set to `"sans"`.
-    /// - `font_weight`: Default initialized to an empty string.
-    /// - `font_style`: Default initialized to an empty string.
-    /// - `font_size`: Default set to 16.0 units.
-    /// - `context`: A clone of the given `context` parameter.
-    /// - `cursor_y`: Initialized to `VSTEP`, representing the vertical cursor position.
-    /// - `cursor_x`: Initialized to `HSTEP`, representing the horizontal cursor position.
-    /// - `line`: An empty vector to accommodate elements in a line layout.
-    /// - `font_id`: Initialized to the default `FontId`.
-    /// - `space_width`: Default initialized to 0.0, representing the width of a space character.
-    /// - `node`: A clone of the given `node` parameter.
-    ///
-    /// # Examples
-    /// ```rust
-    /// use std::rc::Rc;
-    /// use std::cell::RefCell;
-    ///
-    /// let node = Rc::new(RefCell::new(HtmlNode::new()));
-    /// let context = Context::default();
-    ///
-    /// let layout = Layout::new(node, context);
-    /// ```
-    pub fn new(node: Rc<RefCell<HtmlNode>>, context: Context) -> Self {
-
-        let mut layout = Self {
-            texts: Vec::new(),
-            font_family: "sans".to_string(),
-            font_weight: "".to_string(),
-            font_style: "".to_string(),
-            font_size: 16.0,
-            context: context.clone(),
-            cursor_y: VSTEP,
-            cursor_x: HSTEP,
-            line: Vec::new(),
-            font_id: FontId::default(),
-            space_width: 0.0,
-            node: node.clone()
-        };
-
-
-
-
-        layout
-    }
-
-    /// Adjusts the layout of the object by performing font updates, recursive processing,
-    /// and finalizing any pending line flush operations.
-    ///
-    /// This function is responsible for configuring the layout of nodes. The process involves
-    /// the following steps:
-    /// 1. Updating the font settings for layout calculations.
-    /// 2. Recursively processing the internal node structure to apply the desired layout.
-    /// 3. Flushing any pending line adjustments to finalize the layout state.
-    ///
-    /// # Steps:
-    /// - `self.update_font()`: Ensures the font settings are up to date for layout purposes.
-    /// - `self.recurse(self.node.clone())`: Traverses and applies recursive layout logic to
-    ///   the given root node and potentially its descendants.
-    /// - `self.flush_line()`: Completes the process by handling any remaining adjustments for
-    ///   the layout's lines.
-    ///
-    /// # Visibility:
-    /// This function is marked as `pub(crate)`, meaning it is accessible only within the current
-    /// crate but not outside of it.
-    ///
-    /// # Example Usage:
-    /// This function is typically invoked from within the module responsible for managing
-    /// layout operations when the state needs to be recalculated or updated.
-    pub(crate) fn layout(&mut self) {
-        self.update_font();
-        self.recurse(self.node.clone());
-        self.flush_line();
-    }
+impl BlockLayout {
 
     /// Handles opening HTML-like tags and adjusts the corresponding text formatting properties
     /// or behavior of the object accordingly.
@@ -321,7 +537,7 @@ impl Layout {
     /// - Considerations for performance: Cloning objects and iterating multiple times over the line could
     ///   have performance implications for very large datasets. Optimize if necessary.
     fn flush_line(&mut self) {
-        if (self.line.is_empty()){
+        if self.line.is_empty() {
             return;
         }
 
@@ -340,7 +556,7 @@ impl Layout {
 
         for text in &mut self.line {
             text.y = baseline - text.galley.rows.first().unwrap().row.glyphs.first().unwrap().font_ascent;
-            self.texts.push(DrawText {
+            self.display_list.push(DrawText {
                 x: text.x,
                 y: text.y,
                 galley: text.galley.clone()

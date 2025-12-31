@@ -127,7 +127,7 @@ impl HtmlParser {
     pub(crate) fn parse(&mut self) -> Rc<RefCell<HtmlNode>> {
         let mut buffer = String::new();
         let mut in_tag = false;
-        let mut chars: Vec<_> = self.body.chars().collect();
+        let chars: Vec<_> = self.body.chars().collect();
         let mut iter = chars.iter();
         while let Some(c) = iter.next() {
             match c {
@@ -281,7 +281,7 @@ impl HtmlParser {
     /// when it is called.
     /// ```
     fn finish(&mut self) -> Rc<RefCell<HtmlNode>> {
-        if (self.unfinished.is_empty()) {
+        if self.unfinished.is_empty() {
             self.implicit_tags(None);
         }
         while self.unfinished.len() > 1 {

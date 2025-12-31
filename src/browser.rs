@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use crate::layout::{Layout, HEIGHT};
+use crate::layout::{LayoutNode, HEIGHT};
 use crate::node::{Element, Text, HtmlNodeType, HtmlNode};
 use crate::url::Url;
 use eframe::egui;
@@ -43,7 +43,7 @@ pub struct Browser {
     /// The raw, sanitized text content extracted from the source HTML.
     body: String,
     nodes: Option<Rc<RefCell<HtmlNode>>>,
-    document: Option<Layout>
+    document: Option<Rc<RefCell<LayoutNode>>>
 }
 
 
@@ -103,78 +103,14 @@ impl Browser {
                 };
 
                 self.nodes =  Some(parser.parse());
-                self.document = Some(Layout::new(self.nodes.clone().unwrap().clone(),
-                                                 self.context.clone()));
+                self.document = Some(LayoutNode::new_document(self.nodes.clone().unwrap()));
             }
             Err(e) => {
                 eprintln!("Error loading URL: {}", e);
             }
         }
     }
-
-    /// Parses the input string into a sequence of tokens, distinguishing between text and tags.
-    ///
-    /// # Arguments
-    /// * `text` - A string slice that represents the content to be tokenized.
-    ///
-    /// # Returns
-    /// * A `Vec<Token>` containing the extracted tokens. Each token can be either a `Text`
-    ///   (for plain text) or a `Tag` (for content enclosed in angle brackets `< >`).
-    ///
-    /// # Behavior
-    /// * The function iterates through the characters of the input string.
-    /// * When it encounters a `<`, it interprets the subsequent characters as part of a tag
-    ///   until a `>` is found.
-    ///   - Any text before `<` is treated as `Text` and added to the output tokens.
-    ///   - The characters between `<` and `>` are treated as a `Tag`.
-    /// * Text outside of `<` and `>` is treated as `Text`.
-    /// * If the end of the input string is reached while not inside a tag, any remaining
-    ///   content in the buffer is added as a `Text` token.
-    ///
-    /// # Example
-    /// ```rust
-    /// let input = "Hello <tag>world</tag>";
-    /// let tokens = lex(input);
-    /// assert_eq!(tokens, vec![
-    ///     Token::Text(Text { text: "Hello ".to_string() }),
-    ///     Token::Tag(Tag { tag: "tag".to_string() }),
-    ///     Token::Text(Text { text: "world".to_string() }),
-    ///     Token::Tag(Tag { tag: "/tag".to_string() }),
-    /// ]);
-    /// ```
-    ///
-    /// # Notes
-    /// * This function assumes balanced usage of `<` and `>` in the input string.
-    /// * Any text outside `< >` is treated as plain text without further processing.
-    pub fn lex(text: &str) -> Vec<HtmlNodeType> {
-        let mut output: Vec<HtmlNodeType> = Vec::new();
-        let mut buffer = String::new();
-        let mut in_tag = false;
-        let mut chars = text.chars();
-        while let Some(c) = chars.next() {
-            match c {
-                '<' => {
-                    in_tag = true;
-                    if !buffer.is_empty() {output.push(
-                        HtmlNodeType::Text(Text {text: buffer.clone()}))
-                    }
-                    buffer.clear();
-                }
-                '>' => {
-                    in_tag = false;
-                    output.push(HtmlNodeType::Element(Element {tag: buffer.clone(), attributes: HashMap::new()}));
-                    buffer.clear();
-                },
-                _ => {
-                    buffer.push(c);
-                }
-            }
-        }
-        if !in_tag && !buffer.is_empty() {
-            output.push(HtmlNodeType::Text(Text {text: buffer.clone()}))
-        }
-        output
-    }
+    
 
     /// Configures and sets up custom fonts for the `egui` UI context.
     ///
@@ -334,9 +270,9 @@ impl eframe::App for Browser {
         if self.texts.is_empty() {
             match self.document.as_mut() {
                 None => { panic!("Browser document not initialized.") },
-                Some(ref mut doc) => {
-                    doc.layout();
-                    self.texts = doc.texts.clone();
+                Some(doc) => {
+                    LayoutNode::layout(doc.clone(), ctx.clone());
+                    self.texts = doc.borrow().display_list.borrow().clone();
                 }
             }
         }
@@ -376,7 +312,7 @@ impl eframe::App for Browser {
 ///   The absolute vertical position of the text in points.
 /// - `font_name`:
 ///   The name of the font family to be used for rendering the text.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct DrawText {
     /// Absolute horizontal position in points.
     pub(crate) x: f32,
