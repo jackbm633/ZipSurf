@@ -25,31 +25,46 @@ pub struct Layout {
     font_id: FontId,
     space_width: f32,
 
+    pub node: Rc<RefCell<HtmlNode>>,
 }
 
 impl Layout {
-    /// Creates a new instance of the `Self` struct by initializing its properties
-    /// and processing a vector of `Token` elements.
+    /// Creates a new `Layout` instance and initializes it with default font properties,
+    /// spacing, and context. This constructor sets up the basic layout configuration
+    /// for rendering or processing HTML-like nodes.
     ///
     /// # Parameters
-    /// - `tokens`: A vector of `Token` objects that will be processed and
-    ///   incorporated into the layout.
-    /// - `context`: A `Context` object that provides additional information or
-    ///   settings required for layout initialization.
+    /// - `node`: An `Rc<RefCell<HtmlNode>>` that represents a shared HTML-like node structure.
+    ///   This allows multiple references to the same HTML node while allowing mutation through
+    ///   interior mutability.
+    /// - `context`: A `Context` object containing shared or global data required for layout
+    ///   processing or rendering.
     ///
     /// # Returns
-    /// A new instance of `Self` with its properties initialized and tokens processed.
+    /// A `Layout` instance initialized with the following default values:
+    /// - `texts`: An empty vector to store text elements.
+    /// - `font_family`: Default set to `"sans"`.
+    /// - `font_weight`: Default initialized to an empty string.
+    /// - `font_style`: Default initialized to an empty string.
+    /// - `font_size`: Default set to 16.0 units.
+    /// - `context`: A clone of the given `context` parameter.
+    /// - `cursor_y`: Initialized to `VSTEP`, representing the vertical cursor position.
+    /// - `cursor_x`: Initialized to `HSTEP`, representing the horizontal cursor position.
+    /// - `line`: An empty vector to accommodate elements in a line layout.
+    /// - `font_id`: Initialized to the default `FontId`.
+    /// - `space_width`: Default initialized to 0.0, representing the width of a space character.
+    /// - `node`: A clone of the given `node` parameter.
     ///
-    /// # Behavior
-    /// - Initializes the layout with default values:
-    ///   - An empty `texts` vector.
-    ///   - Default cursor positions `cursor_x` and `cursor_y` set to `HSTEP` and `VSTEP` respectively.
-    ///   - Default font properties: `font_family` as `"sans"`, and empty strings
-    ///     for `font_weight` and `font_style`.
-    ///   - Clones the provided `context` to assign it to the layout context.
-    /// - Iterates through each `Token` in the provided `tokens` vector and processes it
-    ///   using the `token` method.
+    /// # Examples
+    /// ```rust
+    /// use std::rc::Rc;
+    /// use std::cell::RefCell;
     ///
+    /// let node = Rc::new(RefCell::new(HtmlNode::new()));
+    /// let context = Context::default();
+    ///
+    /// let layout = Layout::new(node, context);
+    /// ```
     pub fn new(node: Rc<RefCell<HtmlNode>>, context: Context) -> Self {
 
         let mut layout = Self {
@@ -63,17 +78,43 @@ impl Layout {
             cursor_x: HSTEP,
             line: Vec::new(),
             font_id: FontId::default(),
-            space_width: 0.0
-
+            space_width: 0.0,
+            node: node.clone()
         };
 
-        layout.update_font();
-        layout.recurse(node);
 
-        layout.flush_line();
 
 
         layout
+    }
+
+    /// Adjusts the layout of the object by performing font updates, recursive processing,
+    /// and finalizing any pending line flush operations.
+    ///
+    /// This function is responsible for configuring the layout of nodes. The process involves
+    /// the following steps:
+    /// 1. Updating the font settings for layout calculations.
+    /// 2. Recursively processing the internal node structure to apply the desired layout.
+    /// 3. Flushing any pending line adjustments to finalize the layout state.
+    ///
+    /// # Steps:
+    /// - `self.update_font()`: Ensures the font settings are up to date for layout purposes.
+    /// - `self.recurse(self.node.clone())`: Traverses and applies recursive layout logic to
+    ///   the given root node and potentially its descendants.
+    /// - `self.flush_line()`: Completes the process by handling any remaining adjustments for
+    ///   the layout's lines.
+    ///
+    /// # Visibility:
+    /// This function is marked as `pub(crate)`, meaning it is accessible only within the current
+    /// crate but not outside of it.
+    ///
+    /// # Example Usage:
+    /// This function is typically invoked from within the module responsible for managing
+    /// layout operations when the state needs to be recalculated or updated.
+    pub(crate) fn layout(&mut self) {
+        self.update_font();
+        self.recurse(self.node.clone());
+        self.flush_line();
     }
 
     /// Handles opening HTML-like tags and adjusts the corresponding text formatting properties

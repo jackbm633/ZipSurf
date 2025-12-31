@@ -42,7 +42,8 @@ pub struct Browser {
     context: egui::Context,
     /// The raw, sanitized text content extracted from the source HTML.
     body: String,
-    nodes: Option<Rc<RefCell<HtmlNode>>>
+    nodes: Option<Rc<RefCell<HtmlNode>>>,
+    document: Option<Layout>
 }
 
 
@@ -61,7 +62,8 @@ impl Default for Browser {
             scroll_y: 0.0,
             context: egui::Context::default(),
             body: String::new(),
-            nodes: None
+            nodes: None,
+            document: None
         }
     }
 }
@@ -99,7 +101,10 @@ impl Browser {
                     body: body.clone(),
                     unfinished: vec![]
                 };
+
                 self.nodes =  Some(parser.parse());
+                self.document = Some(Layout::new(self.nodes.clone().unwrap().clone(),
+                                                 self.context.clone()));
             }
             Err(e) => {
                 eprintln!("Error loading URL: {}", e);
@@ -292,53 +297,48 @@ impl Browser {
 }
 
 impl eframe::App for Browser {
-    /// ```rust
-    /// Updates the application's state and renders the user interface.
+    /// Updates the application state and renders the user interface.
+    ///
+    /// This function is invoked during every frame update loop. It handles user input, updates internal
+    /// state data, and renders text elements onto the screen.
     ///
     /// # Parameters
-    /// - `ctx`: A reference to the [`egui::Context`] object, which provides
-    ///   context for drawing and handling input events in the `egui` UI framework.
-    /// - `_frame`: A mutable reference to the [`eframe::Frame`] object, which can be used
-    ///   to modify the frame window or interact with the host application (unused in this case).
+    /// - `ctx`: A reference to the `egui::Context` object, which provides access to the current user interface context.
+    /// - `_frame`: A mutable reference to the `eframe::Frame` object, representing the application frame (not currently used).
     ///
-    /// # Behavior
-    /// - If `self.texts` is empty, it calls the `layout` method to initialize content.
-    /// - Handles user input for scrolling by checking if the down arrow key
-    ///   (`egui::Key::ArrowDown`) has been pressed. If so, it increments the `self.scroll_y`
-    ///   value by a constant `SCROLL_STEP`.
-    /// - Utilizes the [`egui::CentralPanel`] to render its contents:
-    ///     - Loops over the `self.texts` collection and draws text elements that are within
-    ///       the visible screen area.
-    ///     - Skips rendering text elements that are outside the visible area using simple
-    ///       culling logic.
-    ///     - Uses the [`egui::Painter`] to draw text, aligning the content to the top-left corner
-    ///       of its position, with a specified font and color.
+    /// # Description
+    /// - If `self.texts` is empty, it attempts to initialize it from `self.document`. The document is laid out, and the `texts`
+    ///   field of the document is cloned into `self.texts`.
+    /// - Responds to user input:
+    ///   - If the user presses the "ArrowDown" key, the `self.scroll_y` value increases by the predefined `SCROLL_STEP`,
+    ///     effectively scrolling the view down.
+    /// - Renders text elements:
+    ///   - The function uses `egui::CentralPanel` to define the main rendering area.
+    ///   - It iterates over all `self.texts` and checks if each text element is in the visible scroll region.
+    ///   - If the text element is within the visible region, it is drawn using the `painter.galley()` method at the appropriate
+    ///     position and with a black color (`Color32::BLACK`).
+    ///
+    /// # Panics
+    /// - If `self.document` is not initialized (`None`) when it is required to fetch text elements, the function will panic
+    ///   with the message: "Browser document not initialized."
     ///
     /// # Notes
-    /// - The `scroll_y` value determines the vertical scroll position for the text layout.
-    /// - The text culling logic ensures better performance by avoiding rendering of off-screen
-    ///   elements.
-    /// - Each text element is drawn using the specified font and size (via `FontId`) and color
-    ///   (`Color32::BLACK`).
-    ///
-    /// # Constants Used
-    /// - `SCROLL_STEP`: The magnitude of the vertical scroll increment when the down arrow key is pressed.
-    /// - `HEIGHT`: Defines the height of the visible area for culling.
-    /// - `VSTEP`: The vertical spacing between text elements.
-    ///
-    /// # Assumptions
-    /// - The `self.texts` collection contains elements with `x`, `y`, `content`, and `font_name`
-    ///   fields.
-    /// - Font size is fixed at `13.0` units for rendering, and `Color32::BLACK` is used for text color.
+    /// - The `scroll_y` value helps manage vertical scrolling within the rendering area.
+    /// - Text elements are culled (skipped) if they are outside the currently visible vertical region.
     ///
     /// # Example Usage
-    /// This method is intended to be part of an interactive application that utilizes
-    /// `egui` and `eframe` frameworks for rendering and UI interaction.
+    /// ```rust
+    /// app.update(ctx, frame);
     /// ```
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.texts.is_empty() {
-            let layout = Layout::new(self.nodes.clone().unwrap().clone(), ctx.clone());
-            self.texts = layout.texts;
+            match self.document.as_mut() {
+                None => { panic!("Browser document not initialized.") },
+                Some(ref mut doc) => {
+                    doc.layout();
+                    self.texts = doc.texts.clone();
+                }
+            }
         }
 
         if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
@@ -376,6 +376,7 @@ impl eframe::App for Browser {
 ///   The absolute vertical position of the text in points.
 /// - `font_name`:
 ///   The name of the font family to be used for rendering the text.
+#[derive(Clone)]
 pub(crate) struct DrawText {
     /// Absolute horizontal position in points.
     pub(crate) x: f32,
