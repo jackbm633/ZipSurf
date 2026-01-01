@@ -272,8 +272,9 @@ impl eframe::App for Browser {
                 None => { panic!("Browser document not initialized.") },
                 Some(doc) => {
                     LayoutNode::layout(doc.clone(), ctx.clone());
-                    //println!{"{:#?}", doc}
-                    self.texts = doc.borrow().display_list.borrow().clone();
+                    self.texts = vec![];
+                    LayoutNode::paint_tree(doc.clone(), &mut self.texts);
+                    
                 }
             }
         }

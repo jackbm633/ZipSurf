@@ -319,18 +319,6 @@ impl LayoutNode {
                         .sum();
 
                     node_borrow.size = Some(Vec2::new(size.unwrap().x, total_height));
-
-                    // 2. Copy (Append) Display Lists up the chain
-                    // We borrow the parent's display list mutably once
-                    let mut parent_dl = node_borrow.display_list.borrow_mut();
-
-                    for child in &node_borrow.children {
-                        // Clone the Rc to the child's display list so we can borrow it
-                        let child_dl_rc = child.borrow().display_list.clone();
-
-                        // Borrow the child's list mutably to drain/append it to the parent
-                        parent_dl.append(&mut *child_dl_rc.borrow_mut());
-                    }
                 }
             }
 
@@ -352,13 +340,82 @@ impl LayoutNode {
             let child_size = child.borrow().size.unwrap();
 
             node.borrow_mut().size = Some(Vec2::new(WIDTH - 2.0 * HSTEP, child_size.y));
-
-            // Sync display lists
-            let child_dl = child.borrow_mut().display_list.clone();
-            node.borrow_mut().display_list.borrow_mut().append(&mut *child_dl.borrow_mut());
         }
     }
 
+    /// Generates a list of `DrawText` objects representing the content to be
+    /// painted or drawn. The function behavior depends on the type of layout node.
+    ///
+    /// # Returns
+    /// - A `Vec<DrawText>` containing the rendered content for the layout node.
+    ///
+    /// ## Behavior:
+    /// - If the layout node is a `LayoutNodeType::Document`, an empty vector is returned
+    ///   as no specific content needs to be drawn for a document node.
+    /// - If the layout node is a `LayoutNodeType::Block`, the function clones and
+    ///   returns the `display_list` associated with the block.
+    ///
+    /// # Example
+    /// ```rust
+    /// let layout_node = LayoutNodeType::Block(block_instance);
+    /// let draw_content = layout_node.paint();
+    /// // `draw_content` now contains the `display_list` of the block.
+    /// ```
+    ///
+    /// # Note
+    /// This function assumes that the layout node and its associated structures
+    /// (e.g., `display_list` in a block) are properly initialized and accessible.
+    pub fn paint(&self) -> Vec<DrawText>{
+        match &self.content {
+            LayoutNodeType::Document => {vec![]},
+            LayoutNodeType::Block(blk) => {
+                blk.display_list.clone()
+            }
+        }
+    }
+
+    /// Recursively traverses the layout tree and populates the display list with draw commands.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - A reference-counted and internally mutable pointer to the root `LayoutNode` from which the painting begins.
+    /// * `display_list` - A mutable reference to a vector that collects the `DrawText` commands for rendering.
+    ///
+    /// # Details
+    ///
+    /// This function processes the current `node` by appending its paint commands to
+    /// the `display_list`. It then iterates over each child of the current `node` and
+    /// recursively calls itself (`paint_tree`) to continue the painting process down
+    /// the tree.
+    ///
+    /// ## Key points:
+    /// - Painting begins with the provided `node` and traverses all of its children.
+    /// - `node.borrow()` is used to safely access the node's data while managing
+    ///   internal mutability using `RefCell`.
+    /// - The `children` of a node are cloned and processed recursively to avoid
+    ///   borrow checker conflicts when iterating over them.
+    ///
+    /// # Usage
+    ///
+    /// This function is generally used to produce a display list from a hierarchical
+    /// layout structure, enabling rendering of complex graphics or UI elements.
+    ///
+    /// ```
+    /// use std::rc::Rc;
+    /// use std::cell::RefCell;
+    ///
+    /// let root_node = Rc::new(RefCell::new(LayoutNode::new()));
+    /// let mut display_list: Vec<DrawText> = Vec::new();
+    /// paint_tree(root_node, &mut display_list);
+    /// ```
+    pub fn paint_tree(node: Rc<RefCell<LayoutNode>>, mut display_list: &mut Vec<DrawText>)  {
+        display_list.append(&mut node.borrow().paint());
+
+        for child in node.borrow().children.clone()
+        {
+            Self::paint_tree(child.clone(), &mut display_list);
+        }
+    }
 
     /// ```rust
     /// Determines the layout mode for a given HTML node by analyzing its type and children.
