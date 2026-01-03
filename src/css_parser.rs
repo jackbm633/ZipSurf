@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 /// Represents a CSS parser for processing and analyzing CSS stylesheets.
 ///
 /// The `CssParser` struct holds a reference to a CSS style string and an index to
@@ -147,6 +149,121 @@ impl CssParser {
             return Err("Parsing error: Expected word".to_string());
         }
         Ok(self.style[start..self.index].iter().collect())
+    }
+
+    /// Checks if the current character in the `style` string matches the given `literal` character,
+    /// and increments the index if it matches. If the current character does not match or the index
+    /// is out of bounds, it panics with a parsing error.
+    ///
+    /// # Arguments
+    ///
+    /// * `literal` - A `char` representing the expected literal to match against the current character
+    /// in the `style` string.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if:
+    /// - The current character in the `style` string does not match the provided `literal`.
+    /// - `self.index` is out of bounds for the `style` string.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// let mut parser = MyParser {
+    ///     style: String::from("abc"),
+    ///     index: 0,
+    /// };
+    /// parser.literal('a'); // Matches and increments the index
+    /// parser.literal('b'); // Matches and increments the index
+    /// parser.literal('x'); // Panics with "Parsing error: Expected literal 'x'"
+    /// ```
+    fn literal(&mut self, literal: char) {
+        if !((self.style[self.index] == literal) && self.index < self.style.len()) {
+            panic!("Parsing error: Expected literal '{}'", literal);
+        }
+        self.index += 1;
+    }
+
+    /// Parses a pair of words separated by a colon (`:`), while allowing
+    /// optional whitespace around the colon. Each word must conform to
+    /// the parsing logic defined by the `word()` method.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing a tuple `(String, String)`, where:
+    /// - The first `String` (property) is converted to lowercase.
+    /// - The second `String` (value) remains in its original form.
+    ///
+    /// If parsing fails at any step, an `Err(String)` will be returned
+    /// containing an error message.
+    ///
+    /// # Steps
+    /// 1. Invokes the `word()` method to parse the first word (`prop`).
+    /// 2. Consumes any additional whitespace after the first word.
+    /// 3. Expects and consumes the `:` literal character.
+    /// 4. Consumes any additional whitespace after the colon.
+    /// 5. Invokes the `word()` method again to parse the second word (`val`).
+    /// 6. Converts the first word (`prop`) to lowercase and returns the tuple.
+    ///
+    /// # Errors
+    /// - If the `word()` method fails to parse either the property or value.
+    /// - If the `literal(':')` check fails to match the expected colon.
+    ///
+    /// # Example
+    /// ```rust
+    /// let mut parser = MyParser::new("key : value");
+    /// let result = parser.pair();
+    /// assert_eq!(result, Ok(("key".to_string(), "value".to_string())));
+    /// ```
+    fn pair(&mut self) -> Result<(String, String), String> {
+        let prop = self.word()?;
+        self.whitespace();
+        self.literal(':');
+        self.whitespace();
+        let val = self.word()?;
+        Ok((prop.to_lowercase(), val))
+    }
+
+    /// Parses a series of key-value pairs from the input, storing them in a `HashMap`.
+    ///
+    /// This method iterates over the style data, extracting key-value pairs by
+    /// repeatedly calling the `pair()` method. Each pair is followed by optional
+    /// whitespace, a mandatory semicolon (`';'`), and more optional whitespace. The
+    /// iteration continues until the end of the style input is reached.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing a `HashMap<String, String>` with all the parsed
+    /// key-value pairs if successful, or a `String` containing an error message if
+    /// an error occurs during parsing.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an `Err(String)` if the `pair()` method fails to parse a key-value pair.
+    /// - Errors may also arise if the expected semicolon or other contextual parsing rules
+    ///   are violated in the input.
+    ///
+    /// # Example
+    /// ```
+    /// let mut parser = YourParser::new("key1: value1; key2: value2;");
+    /// let result = parser.body();
+    /// assert!(result.is_ok());
+    /// let map = result.unwrap();
+    /// assert_eq!(map.get("key1").unwrap(), "value1");
+    /// assert_eq!(map.get("key2").unwrap(), "value2");
+    /// ```
+    fn body(&mut self) -> Result<HashMap::<String, String>, String> {
+        let mut pairs = HashMap::<String, String>::new();
+        while (self.index < self.style.len()) {
+            let pair = self.pair()?;
+            pairs.insert(pair.0, pair.1);
+            self.whitespace();
+            self.literal(';');
+            self.whitespace();
+        }
+        Ok(
+            pairs
+        )
     }
 
 
