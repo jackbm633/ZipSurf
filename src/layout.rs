@@ -1,7 +1,7 @@
 ﻿
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::browser::DrawText;
+use crate::browser::{DrawCommand, DrawRect, DrawText};
 use crate::node::{HtmlNode, HtmlNodeType};
 use eframe::epaint::{Color32, FontFamily, FontId};
 use egui::{Context, Vec2};
@@ -60,7 +60,7 @@ pub struct LayoutNode {
     content: LayoutNodeType,
     position: Option<Vec2>,
     size: Option<Vec2>,
-    pub(crate) display_list: Rc<RefCell<Vec<DrawText>>>
+    pub(crate) display_list: Rc<RefCell<Vec<DrawCommand>>>
 }
 
 impl std::fmt::Debug for LayoutNode {
@@ -295,7 +295,6 @@ impl LayoutNode {
                         composer.recurse(inner_node_ptr);
                         composer.flush_line();
 
-                        *display_list = Rc::new(RefCell::new(composer.layout.display_list.clone()));
                         node_borrow.size = Some(Vec2::new(size.unwrap().x, block_layout.cursor_y));
                     }
                 }
@@ -365,11 +364,40 @@ impl LayoutNode {
     /// # Note
     /// This function assumes that the layout node and its associated structures
     /// (e.g., `display_list` in a block) are properly initialized and accessible.
-    pub fn paint(&self) -> Vec<DrawText>{
+    pub fn paint(&self) -> Vec<DrawCommand>{
         match &self.content {
             LayoutNodeType::Document => {vec![]},
             LayoutNodeType::Block(blk) => {
-                blk.display_list.clone()
+                let mut cmds = Vec::<DrawCommand>::new();
+
+                match &self.node.borrow().node_type {
+                    HtmlNodeType::Element(ele) => {
+                        if ele.tag == "pre" {
+                            cmds.push(DrawCommand::DrawRect(
+                                DrawRect {
+                                    top_left: self.position.unwrap().to_pos2(),
+                                    bottom_right: (self.position.unwrap() + self.size.unwrap()).to_pos2(),
+                                    color: Color32::GRAY
+                                }
+                            ))
+                        }
+                    }
+                    HtmlNodeType::Text(_) => {}
+                }
+                
+                match Self::layout_mode(self.node.clone())
+                {
+                    Inline => {
+                        for text in &blk.display_list {
+                            cmds.push(DrawCommand::DrawText(text.clone()))
+                        }
+                    }
+                    Block => {}
+                }
+
+
+
+                cmds
             }
         }
     }
@@ -408,7 +436,7 @@ impl LayoutNode {
     /// let mut display_list: Vec<DrawText> = Vec::new();
     /// paint_tree(root_node, &mut display_list);
     /// ```
-    pub fn paint_tree(node: Rc<RefCell<LayoutNode>>, mut display_list: &mut Vec<DrawText>)  {
+    pub fn paint_tree(node: Rc<RefCell<LayoutNode>>, mut display_list: &mut Vec<DrawCommand>)  {
         display_list.append(&mut node.borrow().paint());
 
         for child in node.borrow().children.clone()

@@ -5,8 +5,9 @@ use crate::layout::{LayoutNode, HEIGHT};
 use crate::node::{Element, Text, HtmlNodeType, HtmlNode};
 use crate::url::Url;
 use eframe::egui;
-use egui::{Color32, Galley, Pos2};
+use egui::{Color32, Galley, Pos2, Rect, Stroke};
 use std::sync::Arc;
+use eframe::epaint::StrokeKind;
 use crate::html_parser::HtmlParser;
 
 /// The primary state controller for the web browser engine.
@@ -35,7 +36,7 @@ pub struct Browser {
     /// - Maintain the sequential order of tokens for parsing tasks.
     /// - Perform operations like iteration, filtering, or mapping on the list of tokens.
     tokens: Vec<HtmlNodeType>,
-    texts: Vec<DrawText>,
+    draw_commands: Vec<DrawCommand>,
     /// The current vertical scroll offset in points.
     scroll_y: f32,
     /// Handle to the egui context for font layout and UI state.
@@ -58,7 +59,7 @@ impl Default for Browser {
     fn default() -> Self {
         Browser {
             tokens: Vec::new(),
-            texts: Vec::new(),
+            draw_commands: Vec::new(),
             scroll_y: 0.0,
             context: egui::Context::default(),
             body: String::new(),
@@ -267,14 +268,14 @@ impl eframe::App for Browser {
     /// app.update(ctx, frame);
     /// ```
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if self.texts.is_empty() {
+        if self.draw_commands.is_empty() {
             match self.document.as_mut() {
                 None => { panic!("Browser document not initialized.") },
                 Some(doc) => {
                     LayoutNode::layout(doc.clone(), ctx.clone());
-                    self.texts = vec![];
-                    LayoutNode::paint_tree(doc.clone(), &mut self.texts);
-                    
+                    self.draw_commands = vec![];
+                    LayoutNode::paint_tree(doc.clone(), &mut self.draw_commands);
+
                 }
             }
         }
@@ -286,17 +287,30 @@ impl eframe::App for Browser {
         egui::CentralPanel::default().show(ctx, |ui| {
             let painter = ui.painter();
 
-            for text in &self.texts {
-                // Simple culling: don't draw text that is off-screen
-                if (text.y > self.scroll_y + HEIGHT) || (text.y + text.galley.size().y < self.scroll_y) {
-                    continue;
-                }
+            for text in &self.draw_commands {
+                match text {
+                    DrawCommand::DrawText(text) => {
+                        if (text.y > self.scroll_y + HEIGHT) || (text.y + text.galley.size().y < self.scroll_y) {
+                            continue;
+                        }
 
-                painter.galley(
-                    Pos2::new(text.x, text.y - self.scroll_y),
-                    text.galley.clone(),
-                    Color32::BLACK,
-                );
+                        painter.galley(
+                            Pos2::new(text.x, text.y - self.scroll_y),
+                            text.galley.clone(),
+                            Color32::BLACK,
+                        );
+                    }
+                    DrawCommand::DrawRect(rect) => {
+                        painter.rect(Rect::from_two_pos(
+                            (rect.top_left - Pos2::new(0.0, self.scroll_y)).to_pos2(),
+                            (rect.bottom_right - Pos2::new(0.0, self.scroll_y)).to_pos2()),
+                                     0, rect.color,
+                                     Stroke::new(0.0, Color32::BLACK),
+                                     StrokeKind::Middle);
+                    }
+                }
+                // Simple culling: don't draw text that is off-screen
+
             }
         });
     }
@@ -322,4 +336,65 @@ pub(crate) struct DrawText {
     pub(crate) y: f32,
     /// Galley for drawing the text.
     pub(crate) galley: Arc<Galley>
+}
+
+pub(crate) struct DrawRect {
+    /// Represents the top-left position of a rectangle or a bounding box.
+    ///
+    /// # Fields
+    /// - `top_left`: A `Pos2` struct that defines the coordinates of the
+    /// top-left corner. It typically contains `x` and `y` values, denoting
+    /// the horizontal and vertical positions in 2D space, respectively.
+    ///
+    /// # Example
+    /// ```
+    /// let rect_top_left = Pos2 { x: 0.0, y: 0.0 };
+    /// let my_rectangle = Rectangle { top_left: rect_top_left };
+    /// ```
+    pub top_left: Pos2,
+    /// Represents the bottom-right corner of a rectangle or bounding box.
+    ///
+    /// `bottom_right` is a field of type `Pos2` that defines the position
+    /// of the bottom-right corner in a 2D coordinate space. This is
+    /// typically used to describe geometric boundaries or the dimensions
+    /// of a rectangular area.
+    ///
+    /// # Example
+    /// ```rust
+    /// let rect_bottom_right = Pos2 { x: 10.0, y: 5.0 };
+    /// println!("Bottom-right corner is at: ({}, {})", rect_bottom_right.x, rect_bottom_right.y);
+    /// ```
+    ///
+    /// # Fields
+    /// - `bottom_right`: A `Pos2` struct containing `x` and `y` coordinates.
+    ///
+    /// # See also
+    /// - `Pos2` for understanding the structure of the coordinate type.
+    pub bottom_right: Pos2,
+    /// A public field representing the color of the object.
+    ///
+    /// This field uses the `Color32` type, which encapsulates a 32-bit color value,
+    /// typically including red, green, blue, and alpha (transparency) components.
+    ///
+    /// # Example
+    /// ```rust
+    /// use some_module::Color32;
+    ///
+    /// struct Object {
+    ///     pub color: Color32,
+    /// }
+    ///
+    /// let my_color = Color32::from_rgba_unmultiplied(255, 0, 0, 255); // Red color
+    /// let object = Object { color: my_color };
+    /// println!("The color is {:?}", object.color);
+    /// ```
+    ///
+    /// # Usage
+    /// This field can be read or modified directly in structs where it is declared as `pub`.
+    pub color: Color32
+}
+
+pub enum DrawCommand {
+    DrawText(DrawText),
+    DrawRect(DrawRect)
 }
