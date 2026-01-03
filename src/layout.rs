@@ -59,7 +59,7 @@ pub struct LayoutNode {
     previous: Option<Rc<RefCell<LayoutNode>>>,
     content: LayoutNodeType,
     position: Option<Vec2>,
-    size: Option<Vec2>,
+    pub(crate) size: Option<Vec2>,
     pub(crate) display_list: Rc<RefCell<Vec<DrawCommand>>>
 }
 

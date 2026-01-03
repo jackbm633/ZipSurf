@@ -1,13 +1,15 @@
 use std::cell::RefCell;
+use std::cmp::min;
 use std::collections::HashMap;
 use std::rc::Rc;
-use crate::layout::{LayoutNode, HEIGHT};
+use crate::layout::{LayoutNode, HEIGHT, VSTEP};
 use crate::node::{Element, Text, HtmlNodeType, HtmlNode};
 use crate::url::Url;
 use eframe::egui;
 use egui::{Color32, Galley, Pos2, Rect, Stroke};
 use std::sync::Arc;
 use eframe::epaint::StrokeKind;
+use egui::Key::H;
 use crate::html_parser::HtmlParser;
 
 /// The primary state controller for the web browser engine.
@@ -280,7 +282,14 @@ impl eframe::App for Browser {
             }
         }
 
-        if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+        if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)){
+            match &self.document {
+                None => { panic!("Browser document not initialized.") },
+                Some(doc) => {
+                    let max_y = doc.borrow().size.unwrap().y + 2.0*VSTEP - HEIGHT;
+                    self.scroll_y = (self.scroll_y + SCROLL_STEP).min(max_y);
+                }
+            }
             self.scroll_y += SCROLL_STEP;
         }
 
@@ -288,27 +297,26 @@ impl eframe::App for Browser {
             let painter = ui.painter();
 
             for text in &self.draw_commands {
-                match text {
-                    DrawCommand::DrawText(text) => {
-                        if (text.y > self.scroll_y + HEIGHT) || (text.y + text.galley.size().y < self.scroll_y) {
-                            continue;
+                if (text.top() < self.scroll_y + HEIGHT) || (text.bottom() > self.scroll_y) {
+                    match text {
+                        DrawCommand::DrawText(text) => {
+                            painter.galley(
+                                Pos2::new(text.x, text.y - self.scroll_y),
+                                text.galley.clone(),
+                                Color32::BLACK,
+                            );
                         }
-
-                        painter.galley(
-                            Pos2::new(text.x, text.y - self.scroll_y),
-                            text.galley.clone(),
-                            Color32::BLACK,
-                        );
-                    }
-                    DrawCommand::DrawRect(rect) => {
-                        painter.rect(Rect::from_two_pos(
-                            (rect.top_left - Pos2::new(0.0, self.scroll_y)).to_pos2(),
-                            (rect.bottom_right - Pos2::new(0.0, self.scroll_y)).to_pos2()),
-                                     0, rect.color,
-                                     Stroke::new(0.0, Color32::BLACK),
-                                     StrokeKind::Middle);
+                        DrawCommand::DrawRect(rect) => {
+                            painter.rect(Rect::from_two_pos(
+                                (rect.top_left - Pos2::new(0.0, self.scroll_y)).to_pos2(),
+                                (rect.bottom_right - Pos2::new(0.0, self.scroll_y)).to_pos2()),
+                                         0, rect.color,
+                                         Stroke::new(0.0, Color32::BLACK),
+                                         StrokeKind::Middle);
+                        }
                     }
                 }
+
                 // Simple culling: don't draw text that is off-screen
 
             }
@@ -397,4 +405,80 @@ pub(crate) struct DrawRect {
 pub enum DrawCommand {
     DrawText(DrawText),
     DrawRect(DrawRect)
+}
+
+impl DrawCommand {
+    /// Calculates the bottom y-coordinate of a `DrawCommand`.
+    ///
+    /// This method determines the vertical bottom position based on the type of
+    /// `DrawCommand`:
+    ///
+    /// - If the `DrawCommand` is `DrawText`, the bottom is computed as the sum of
+    ///   the `y` coordinate of the text and the height of its galley (text layout).
+    /// - If the `DrawCommand` is `DrawRect`, the bottom is the `y` coordinate of
+    ///   the rectangle's bottom-right corner.
+    ///
+    /// # Returns
+    ///
+    /// A `f32` value representing the bottom y-coordinate of the `DrawCommand`.
+    ///
+    /// # Examples
+    /// ```
+    /// let text_command = DrawCommand::DrawText(Text {
+    ///     y: 10.0,
+    ///     galley: Galley { rect: Rect { height: 20.0 } },
+    /// });
+    /// assert_eq!(text_command.bottom(), 30.0);
+    ///
+    /// let rect_command = DrawCommand::DrawRect(Rect {
+    ///     bottom_right: Point { y: 25.0 },
+    /// });
+    /// assert_eq!(rect_command.bottom(), 25.0);
+    /// ```
+    ///
+    /// # Panics
+    /// This function does not explicitly panic under normal circumstances, provided
+    /// valid `DrawCommand` variants are used.
+    fn bottom(&self) -> f32 {
+        match self {
+            DrawCommand::DrawText(txt) => {
+                txt.y + txt.galley.rect.height()
+            }
+            DrawCommand::DrawRect(rct) => {
+                rct.bottom_right.y
+            }
+        }
+    }
+
+    /// ```rust
+    /// Returns the `y` coordinate of the top position for the current `DrawCommand`.
+    ///
+    /// This method determines the top position based on the specific variant
+    /// of the `DrawCommand` enum:
+    ///
+    /// - If the `DrawCommand` is a `DrawText`, it returns the `y` coordinate of the text's position.
+    /// - If the `DrawCommand` is a `DrawRect`, it returns the `y` coordinate of the rectangle's top-left corner.
+    ///
+    /// # Returns
+    /// A `f32` representing the `y` coordinate of the top position.
+    ///
+    /// # Example
+    /// ```rust
+    /// let text_command = DrawCommand::DrawText(Text { y: 10.0 });
+    /// assert_eq!(text_command.top(), 10.0);
+    ///
+    /// let rect_command = DrawCommand::DrawRect(Rect { top_left: Point { x: 5.0, y: 20.0 } });
+    /// assert_eq!(rect_command.top(), 20.0);
+    /// ```
+    /// ```
+    fn top(&self) -> f32 {
+        match self {
+            DrawCommand::DrawText(txt) => {
+                txt.y
+            }
+            DrawCommand::DrawRect(rct) => {
+                rct.top_left.y
+            }
+        }
+    }
 }
