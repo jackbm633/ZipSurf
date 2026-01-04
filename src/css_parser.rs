@@ -1,33 +1,25 @@
 use std::collections::HashMap;
 
-/// Represents a CSS parser for processing and analyzing CSS stylesheets.
+/// Represents a CSS parser that processes a vector of characters to parse CSS styles.
 ///
-/// The `CssParser` struct holds a reference to a CSS style string and an index to
-/// track the current parsing position. This struct is designed to facilitate the
-/// parsing of CSS rules, selectors, and properties.
+/// The `CssParser` struct contains the following fields:
 ///
-/// # Fields
-///
-/// - `style`: A reference to a string slice containing the CSS styles. This is the CSS
-///   source that the parser processes. The lifetime `'b` ensures that the `CssParser`
-///   does not outlive the provided CSS string.
-/// - `index`: An `i64` representing the current position within the CSS string. It is used
-///   to track the parsing progress in the string.
+/// - `style`: A `Vec<char>` that holds the characters of the CSS style to be parsed.
+/// - `index`: A `usize` value that represents the current position of the parser within the `style` vector.
 ///
 /// # Example
 ///
 /// ```rust
-/// let css_content = "body { color: black; }";
-/// let parser = CssParser {
-///     style: css_content,
+/// let css_string = "body { color: black; }".chars().collect();
+/// let mut parser = CssParser {
+///     style: css_string,
 ///     index: 0,
 /// };
-/// println!("Parsing CSS: {}", parser.style);
-/// ```
 ///
-/// The `CssParser` can be extended to include methods for traversing, finding, or extracting
-/// specific CSS rules or properties.
-struct CssParser<> {
+/// // Example usage of the parser
+/// assert_eq!(parser.style[parser.index], 'b');
+/// ```
+struct CssParser {
     style: Vec<char>,
     index: usize,
 }
@@ -252,9 +244,9 @@ impl CssParser {
     /// assert_eq!(map.get("key1").unwrap(), "value1");
     /// assert_eq!(map.get("key2").unwrap(), "value2");
     /// ```
-    fn body(&mut self) -> Result<HashMap::<String, String>, String> {
+    fn body(&mut self) -> Result<HashMap<String, String>, String> {
         let mut pairs = HashMap::<String, String>::new();
-        while (self.index < self.style.len()) {
+        while self.index < self.style.len() {
             let pair = self.pair()?;
             pairs.insert(pair.0, pair.1);
             self.whitespace();
@@ -266,6 +258,48 @@ impl CssParser {
         )
     }
 
+    /// Advances the internal index until one of the specified characters (`literals`)
+    /// is found in the `style` string. If a matching character is encountered, it is returned.
+    /// If none of the characters in `literals` are found by the time the end of the `style`
+    /// string is reached, the method returns `None`.
+    ///
+    /// # Arguments
+    ///
+    /// * `literals` - A vector of characters to look for in the `style` string.
+    ///
+    /// # Returns
+    ///
+    /// * `Option<char>` - The first matching character wrapped in `Some` if found,
+    ///   or `None` if no match is encountered.
+    ///
+    /// # Behavior
+    ///
+    /// * The method increments `self.index` as it loops through the characters in the `style` string.
+    /// * If the end of the `style` string is reached before finding a matching character,
+    ///   `None` is returned.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// let mut parser = YourStruct { style: "abcde".to_string(), index: 0 };
+    /// let result = parser.ignore_until(vec!['c', 'e']);
+    /// assert_eq!(result, Some('c'));
+    /// assert_eq!(parser.index, 2); // `index` stops at the position of the match
+    ///
+    /// let result = parser.ignore_until(vec!['x', 'y']);
+    /// assert_eq!(result, None);
+    /// assert_eq!(parser.index, 5); // `index` reaches the end of the string
+    /// ```
+    fn ignore_until(&mut self, literals: Vec<char>) -> Option<char> {
+        while self.index < self.style.len() {
+            if literals.contains(&self.style[self.index]) {
+                return Some(self.style[self.index]);
+            } else {
+                self.index += 1;
+            }
+        }
+        None
+    }
 
 
 
