@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use crate::selector::Selector;
+use crate::selector::SelectorType::{Descendant, Tag};
 
 /// Represents a CSS parser that processes a vector of characters to parse CSS styles.
 ///
@@ -390,6 +392,65 @@ impl CssParser {
             }
         }
         None
+    }
+
+    /// Parses a CSS-like selector from the current style string and constructs a `Selector` object with
+    /// either a single tag or a descendant hierarchy of tags.
+    ///
+    /// # Details
+    /// This function builds a hierarchical representation of a selector by repeatedly parsing individual
+    /// tags and constructing a `Selector` object. The hierarchy constructed represents descendant
+    /// relationships in the selector (e.g., for selectors such as `div span`, `div` is the ancestor of `span`).
+    ///
+    /// The parsing stops when a `{` character is encountered or when the end of the style is reached. Any
+    /// unnecessary whitespace in the selector string is ignored.
+    ///
+    /// # Errors
+    /// If the function encounters an error in parsing the selector, it will return a `Result::Err` with
+    /// an appropriate error message.
+    ///
+    /// # Returns
+    /// Returns a `Result`:
+    /// - `Ok(Selector)` containing the parsed selector.
+    /// - `Err(String)` containing an error message in case of parsing failure.
+    ///
+    /// # Example
+    /// ```rust
+    /// // Assume `self` is configured with a proper style string and methods.
+    /// let selector = self.selector();
+    /// match selector {
+    ///     Ok(result) => println!("Parsed selector: {:?}", result),
+    ///     Err(err) => eprintln!("Error parsing selector: {}", err),
+    /// }
+    /// ```
+    ///
+    /// # Prerequisites
+    /// - The `self.word()` function must be able to properly parse valid tags.
+    /// - The `self.whitespace()` function must handle whitespace clearing in the input.
+    ///
+    /// # Notes
+    /// - The function assumes that `self.style` holds the input style string, and `self.index` tracks the
+    ///   current parsing position.
+    /// - Each tag in the hierarchy is converted to lowercase to ensure case-insensitive matching.
+    ///
+    /// # Dependencies
+    /// This function depends on the following structures/classes:
+    /// - `Selector`: Represents the selector being constructed.
+    /// - `Tag { tag: String }`: Represents an individual tag in the selector.
+    /// - `Descendant { ancestor: Box<Selector>, descendant: Box<Selector> }`: Represents a descendant
+    ///   relationship between two selectors.
+    ///
+    /// See the implementation of `Selector`, `Tag`, and `Descendant` for more details.
+    fn selector(&mut self) -> Result<Selector, String> {
+        let mut out = Selector { selector: Tag {tag: self.word()?.to_lowercase()} };
+        self.whitespace();
+        while self.index < self.style.len() && self.style[self.index] != '{' {
+            let tag = self.word()?;
+            let descendant = Selector { selector: Tag {tag: tag.to_lowercase()} };
+            out = Selector { selector: Descendant {ancestor: Box::from(out),
+                descendant: Box::from(descendant)}}
+        }
+        Ok(out)
     }
 
 

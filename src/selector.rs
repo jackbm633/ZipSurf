@@ -27,7 +27,7 @@ use crate::node::{HtmlNode, HtmlNodeType};
 /// Note: Replace `SelectorType::ExampleType` with the appropriate
 /// implementation of `SelectorType`.
 pub struct Selector {
-    selector: SelectorType
+    pub(crate) selector: SelectorType
 }
 
 /// An enum representing different types of selectors that can be used
