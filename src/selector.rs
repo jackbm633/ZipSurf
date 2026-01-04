@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use crate::node::{HtmlNode, HtmlNodeType};
 
 /// A struct representing a generic selector used to encapsulate some selection mechanism.
@@ -51,7 +53,8 @@ pub struct Selector {
 /// }
 /// ```
 pub enum SelectorType {
-    Tag { tag: String }
+    Tag { tag: String },
+    Descendant { ancestor: Box<Selector>, descendant: Box<Selector>}
 }
 
 impl Selector {
@@ -74,38 +77,62 @@ impl Selector {
         Selector { selector: SelectorType::Tag { tag }}
     }
 
-    /// Checks if the given `HtmlNode` matches the `SelectorType` of the current object.
+    /// Determines if a given `HtmlNode` matches a specified selector.
     ///
     /// # Parameters
-    /// - `node`: A reference to an `HtmlNode` which will be tested for a match.
+    /// - `self`: The current selector that is being used for matching.
+    /// - `node`: A reference-counted `HtmlNode` wrapped in a `RefCell`. This represents
+    ///   the node in the DOM tree that will be checked against the selector.
     ///
     /// # Returns
-    /// - `true` if the `HtmlNode` matches the selector criteria.
-    /// - `false` otherwise.
+    /// - `bool`: Returns `true` if the provided `HtmlNode` matches the selector,
+    ///   otherwise returns `false`.
     ///
     /// # Behavior
-    /// - If the `SelectorType` is a `Tag` selector:
-    ///   - If the `HtmlNode` is an `Element`, it checks whether the tag of the element equals the selector's tag.
-    ///   - If the `HtmlNode` is a `Text` node, it will always return `false`.
+    /// - The behavior varies depending on the type of selector:
+    ///   - `SelectorType::Tag`: Matches if the current `HtmlNode` is an element node
+    ///     with a tag name equal to the provided tag in the selector. Returns `false`
+    ///     if the node is a text node or the tag does not match.
+    ///   - `SelectorType::Descendant`: Matches if the `descendant` selector matches
+    ///     the current node and there exists an ancestor node in the DOM tree that
+    ///     matches the `ancestor` selector. This works by traversing the parent chain
+    ///     of the current node.
     ///
-    /// # Examples
-    /// ```rust
-    /// let selector = SelectorType::Tag { tag: "div".to_string() };
-    /// let html_node = HtmlNode { node_type: HtmlNodeType::Element(HtmlElement { tag: "div".to_string() }) };
-    /// assert!(selector.matches(&html_node));
+    /// # Note
+    /// - For `SelectorType::Descendant`, if the `descendant` selector does not match
+    ///   the current node, the function immediately returns `false`. Otherwise, it
+    ///   iteratively traverses up the DOM tree by following the `parent` references
+    ///   to check for a matching `ancestor`.
     ///
-    /// let text_node = HtmlNode { node_type: HtmlNodeType::Text("example".to_string()) };
-    /// assert!(!selector.matches(&text_node));
+    /// # Example
     /// ```
-    fn matches(&self, node: &HtmlNode) -> bool {
+    /// // Assuming `node` is an Rc<RefCell<HtmlNode>> and `selector` is a valid selector:
+    /// if selector.matches(node) {
+    ///     println!("The node matches the selector!");
+    /// } else {
+    ///     println!("The node does not match the selector.");
+    /// }
+    /// ```
+    fn matches(&self, mut node: Rc<RefCell<HtmlNode>>) -> bool {
         match &self.selector {
             SelectorType::Tag { tag } => {
-                match &node.node_type {
+                match &node.borrow().node_type {
                     HtmlNodeType::Element(e) => {
                         e.tag == *tag
                     }
                     HtmlNodeType::Text(_) => {false}
                 }
+            }
+            SelectorType::Descendant { descendant, ancestor } => {
+                if !descendant.matches(node.clone()) {return false}
+                while node.borrow().parent.is_some() {
+                    if ancestor.matches(node.borrow().parent.clone().unwrap()) {
+                        return true
+                    }
+                    let new_node = node.borrow().parent.clone().unwrap();
+                    node = new_node;
+                }
+                false
             }
         }
     }
