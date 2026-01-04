@@ -9,6 +9,7 @@ mod node;
 mod layout;
 mod html_parser;
 mod css_parser;
+mod selector;
 
 fn main() -> eframe::Result<(), eframe::Error> {
     let url = args().skip(1).next().expect("No URL provided.");
