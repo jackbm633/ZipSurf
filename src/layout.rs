@@ -342,28 +342,69 @@ impl LayoutNode {
         }
     }
 
-    /// Generates a list of `DrawText` objects representing the content to be
-    /// painted or drawn. The function behavior depends on the type of layout node.
+    /// Generates a sequence of drawing commands (`Vec<DrawCommand>`) for rendering elements
+    /// based on the layout node and its attributes, such as position, size, style, and type.
     ///
     /// # Returns
-    /// - A `Vec<DrawText>` containing the rendered content for the layout node.
+    /// A vector of `DrawCommand` objects representing the drawing instructions
+    /// for the current layout node and its children (if applicable).
     ///
-    /// ## Behavior:
-    /// - If the layout node is a `LayoutNodeType::Document`, an empty vector is returned
-    ///   as no specific content needs to be drawn for a document node.
-    /// - If the layout node is a `LayoutNodeType::Block`, the function clones and
-    ///   returns the `display_list` associated with the block.
+    /// # Behavior
+    /// The function processes nodes of type `Document` and `Block` differently:
     ///
-    /// # Example
-    /// ```rust
-    /// let layout_node = LayoutNodeType::Block(block_instance);
-    /// let draw_content = layout_node.paint();
-    /// // `draw_content` now contains the `display_list` of the block.
-    /// ```
+    /// ## Document Node
+    /// * If the node's type is `LayoutNodeType::Document`, an empty vector is returned
+    ///   as no specific rendering logic is associated with the document node itself.
     ///
-    /// # Note
-    /// This function assumes that the layout node and its associated structures
-    /// (e.g., `display_list` in a block) are properly initialized and accessible.
+    /// ## Block Node
+    /// * If the node's type is `LayoutNodeType::Block`, the function generates drawing commands
+    ///   based on the following:
+    ///
+    /// ### Background Color
+    /// * Retrieves the `background-color` style from the node's associated styles.
+    /// * If a valid color is found and has a non-zero alpha (i.e., not fully transparent),
+    ///   a `DrawRect` command is created for rendering a rectangle that represents the background.
+    /// * The rectangle's position and size are determined using the `position` and `size` properties
+    ///   of the layout node.
+    ///
+    /// ### Text Contents
+    /// * If the layout mode for the block is `Inline`, iterates over the `display_list` and generates
+    ///   one or more `DrawText` commands for rendering text content.
+    ///
+    /// ### Layout Mode
+    /// * Handles additional layout-specific behaviors, such as `Inline` or `Block`, although
+    ///   the `Block` mode logic is currently not implemented in this function.
+    ///
+    /// ### Node Type
+    /// * The function differentiates between `HtmlNodeType::Element` and `HtmlNodeType::Text`,
+    ///   where the latter does not produce any specific drawing commands in this implementation.
+    ///
+    /// # Dependencies
+    /// * The function depends on external modules such as `csscolorparser` for parsing CSS-compatible
+    ///   color strings and converting them into `Color32`.
+    /// * Drawing commands like `DrawRect` and `DrawText` are facilitated via the `DrawCommand` enum.
+    ///
+    /// # Parameters
+    /// * `&self`: A reference to the current `LayoutNode` object that contains the type, position, size,
+    ///   and other properties necessary for computing draw commands.
+    ///
+    /// # Notes
+    /// * This function assumes that the `position` and `size` attributes of the layout node are
+    ///   always present (`Some`). If they are `None`, it will likely result in a runtime panic when unwrapped.
+    ///
+    /// # Example Behavior
+    /// For a block node with a background color of `#FF5733` and a valid position and size,
+    /// the function will emit a `DrawRect` command to render a rectangle.
+    /// If the block node contains inline text, it will emit `DrawText` commands for each text element.
+    ///
+    /// # Potential Improvements
+    /// * Gracefully handle cases where position or size is `None` to avoid runtime panics.
+    /// * Implement additional drawing logic for `Block` mode if required.
+    /// * Add support for more styles and attributes (e.g., borders, shadows) in future enhancements.
+    ///
+    /// # Output Format
+    /// The result is a list of drawing commands that downstream subsystems or renderers can consume
+    /// to render the element onto a display or canvas.
     pub fn paint(&self) -> Vec<DrawCommand>{
         match &self.content {
             LayoutNodeType::Document => {vec![]},
@@ -371,16 +412,25 @@ impl LayoutNode {
                 let mut cmds = Vec::<DrawCommand>::new();
 
                 match &self.node.borrow().node_type {
-                    HtmlNodeType::Element(ele) => {
-                        if ele.tag == "pre" {
-                            cmds.push(DrawCommand::DrawRect(
-                                DrawRect {
-                                    top_left: self.position.unwrap().to_pos2(),
-                                    bottom_right: (self.position.unwrap() + self.size.unwrap()).to_pos2(),
-                                    color: Color32::GRAY
-                                }
-                            ))
+                    HtmlNodeType::Element(_ele) => {
+                        let bgcolor = self.node.borrow().style.get("background-color")
+                            .unwrap_or(&"transparent".to_string()).clone();
+
+                        let color_parse = csscolorparser::parse(&*bgcolor);
+                        let color = Color32::from_hex(
+                            &*color_parse.unwrap().to_css_hex()).unwrap();
+
+                        if (color.a() > 0) {
+                            let rect = DrawCommand::DrawRect(DrawRect {
+                                top_left: self.position.unwrap().to_pos2(),
+                                bottom_right: (self.position.unwrap() + self.size.unwrap()).to_pos2(),
+                                color,
+                            });
+                            cmds.push(rect);
                         }
+
+
+
                     }
                     HtmlNodeType::Text(_) => {}
                 }

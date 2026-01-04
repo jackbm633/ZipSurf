@@ -1,15 +1,13 @@
 use std::cell::RefCell;
-use std::cmp::min;
-use std::collections::HashMap;
 use std::rc::Rc;
 use crate::layout::{LayoutNode, HEIGHT, VSTEP};
-use crate::node::{Element, Text, HtmlNodeType, HtmlNode};
+use crate::node::{HtmlNodeType, HtmlNode};
 use crate::url::Url;
 use eframe::egui;
 use egui::{Color32, Galley, Pos2, Rect, Stroke};
 use std::sync::Arc;
 use eframe::epaint::StrokeKind;
-use egui::Key::H;
+use crate::css_parser::CssParser;
 use crate::html_parser::HtmlParser;
 
 /// The primary state controller for the web browser engine.
@@ -106,10 +104,104 @@ impl Browser {
                 };
 
                 self.nodes =  Some(parser.parse());
+                Self::style(Some(self.nodes.clone().unwrap()));
                 self.document = Some(LayoutNode::new_document(self.nodes.clone().unwrap()));
             }
             Err(e) => {
                 eprintln!("Error loading URL: {}", e);
+            }
+        }
+    }
+
+    /// Applies inline CSS styles to an HTML node and its descendants.
+    ///
+    /// # Description
+    /// This function parses the `style` attribute of an HTML element (if present),
+    /// extracts the individual CSS properties, and applies them to the `style`
+    /// hashmap of the node. The function then recursively applies the same
+    /// operation to all child nodes of the given HTML node. It expects the input
+    /// node to be wrapped in an `Option<Rc<RefCell<HtmlNode>>>` for ownership
+    /// and mutability management.
+    ///
+    /// # Parameters
+    /// - `node`: An `Option<Rc<RefCell<HtmlNode>>>` representing the HTML node
+    ///   to which styles will be applied. If the node is `None`, the function
+    ///   will panic with a descriptive error message. If it's an element node with
+    ///   a `style` attribute, the CSS properties will be parsed and applied to the
+    ///   node's `style` attribute.
+    ///
+    /// # Panics
+    /// - The function will panic if:
+    ///   - The provided `node` is `None`, indicating that no browser document
+    ///     (or root node) is initialized.
+    ///   - The `style` attribute of the element contains invalid CSS that
+    ///     causes the CSS parser to fail.
+    ///
+    /// # Behavior
+    /// - For element nodes:
+    ///   - Parses the `style` attribute (if present) using the `CssParser`.
+    ///   - On successful parsing, each key-value pair of CSS properties is inserted
+    ///     into the node's `style` hashmap.
+    ///   - On parsing errors, a panic occurs.
+    /// - For text nodes:
+    ///   - No styles are processed, as text nodes do not have a `style` attribute.
+    /// - Recursively calls itself on all child nodes of the current node to ensure
+    ///   styles are applied to the entire subtree.
+    ///
+    /// # Example
+    /// ```rust
+    /// let html_node = Rc::new(RefCell::new(HtmlNode {
+    ///     node_type: HtmlNodeType::Element(HtmlElement {
+    ///         attributes: [("style".to_string(), "color: red; font-size: 14px;".to_string())].iter().cloned().collect(),
+    ///     }),
+    ///     style: HashMap::new(),
+    ///     children: vec![],
+    /// }));
+    ///
+    /// HtmlStyler::style(Some(html_node.clone()));
+    ///
+    /// // After calling `style`, the node's `style` hashmap will contain:
+    /// // - "color" -> "red"
+    /// // - "font-size" -> "14px"
+    /// ```
+    ///
+    /// # Notes
+    /// - This function assumes that the `CssParser` has been properly implemented
+    ///   and that it can parse valid CSS strings.
+    /// - The `HtmlNode` struct must implement `RefCell` for internal mutability
+    ///   and should provide a `style` hashmap for storing parsed styles.
+    ///
+    /// # Dependencies
+    /// - `CssParser` is responsible for parsing the CSS specified in the `style` attribute.
+    /// - `HtmlNode` and `HtmlNodeType` are core data structures for representing
+    ///   the HTML DOM tree.
+    fn style(node: Option<Rc<RefCell<HtmlNode>>>) {
+        match node {
+            None => {panic!("Browser document not initialized.")}
+            Some(nd) => {
+                let mut borrow_node = nd.borrow_mut();
+                match &borrow_node.node_type {
+                    HtmlNodeType::Element(el) => {
+                        if el.attributes.contains_key("style") {
+                            let mut parser = CssParser::new(el.attributes["style"].as_str());
+                            let pairs = parser.body();
+                            match pairs {
+                                Ok(pairs_map) => {
+                                    for (key, value) in pairs_map {
+                                        borrow_node.style.insert(
+                                            key.to_string(), value.to_string());
+                                    }
+                                }
+                                Err(_) => {panic!()}
+                            }
+                        }
+                    }
+                    HtmlNodeType::Text(_) => {}
+                }
+
+                for child in borrow_node.children.clone() {
+                    Self::style(Some(child))
+                }
             }
         }
     }

@@ -22,57 +22,55 @@ pub enum HtmlNodeType {
     Text(Text)
 }
 
-/// ```rust
-/// Represents a node in an HTML DOM tree structure.
+/// Represents a node in an HTML document tree structure.
 ///
-/// The `HtmlNode` struct is used to model elements in an HTML document,
-/// enabling the representation of hierarchical relationships between nodes,
-/// such as parent-child and sibling relationships.
+/// Each `HtmlNode` object holds information about its type, hierarchical
+/// relationships (parent and children), and inline style attributes.
 ///
 /// # Fields
 ///
-/// * `node_type` - Specifies the type of the HTML node. This could represent
-///   an element node, a text node, or other node types as defined by the `HtmlNodeType` enum.
+/// * `node_type` - The type of the HTML node, which determines its role
+///   in the document (e.g., element, text node, comment, etc.).
 ///
-/// * `children` - A vector of references to the child nodes of this `HtmlNode`.
-///   Each child node is wrapped in an `Rc<RefCell<HtmlNode>>` to enable shared ownership
-///   and interior mutability, allowing for dynamic updates to the DOM structure.
+/// * `children` - A vector of child nodes, stored as [`Rc`] wrapped in
+///   [`RefCell`] for shared ownership and interior mutability.
 ///
-/// * `parent` - An optional reference to the parent of this `HtmlNode`. This field
-///   is also wrapped in an `Rc<RefCell<HtmlNode>>` to facilitate shared
-///   ownership and mutable access. If set to `None`, this node is the root of the tree.
+/// * `parent` - An optional reference to the parent node, also stored
+///   as an [`Rc`] wrapped in [`RefCell`]. If the node is the root, this
+///   field will be `None`.
 ///
-/// # Usage
-///
-/// The `HtmlNode` struct can be used to model and manipulate a tree of HTML
-/// elements programmatically. It is especially suitable for use cases such as
-/// building custom HTML parsers, rendering engines, or other tools that operate
-/// on structured HTML data.
+/// * `style` - A [`HashMap`] storing the inline CSS styles associated
+///   with the node. The keys are CSS property names (as strings), and
+///   the values are the corresponding property values.
 ///
 /// # Example
+///
 /// ```rust
-/// use std::rc::Rc;
+/// use std::collections::HashMap;
 /// use std::cell::RefCell;
+/// use std::rc::Rc;
+///
+/// let mut style = HashMap::new();
+/// style.insert(String::from("color"), String::from("red"));
 ///
 /// let root = Rc::new(RefCell::new(HtmlNode {
 ///     node_type: HtmlNodeType::Element(String::from("div")),
 ///     children: vec![],
 ///     parent: None,
+///     style,
 /// }));
-///
-/// let child = Rc::new(RefCell::new(HtmlNode {
-///     node_type: HtmlNodeType::Element(String::from("span")),
-///     children: vec![],
-///     parent: Some(Rc::clone(&root)),
-/// }));
-///
-/// root.borrow_mut().children.push(Rc::clone(&child));
 /// ```
-/// ```
+///
+/// # Note
+///
+/// This structure supports shared ownership of nodes and allows mutable
+/// access through the use of [`Rc`] and [`RefCell`]. Care should be taken
+/// to avoid cyclic references when creating parent-child relationships.
 pub struct HtmlNode {
     pub(crate) node_type: HtmlNodeType,
     pub(crate) children: Vec<Rc<RefCell<HtmlNode>>>,
-    pub(crate) parent: Option<Rc<RefCell<HtmlNode>>>
+    pub(crate) parent: Option<Rc<RefCell<HtmlNode>>>,
+    pub(crate) style: HashMap<String, String>
 }
 
 impl std::fmt::Debug for HtmlNode {
@@ -85,11 +83,35 @@ impl std::fmt::Debug for HtmlNode {
 }
 
 impl HtmlNode {
+    /// Creates a new `HtmlNode` instance with the specified node type and optional parent.
+    ///
+    /// # Parameters
+    /// - `node_type`: The type of the HTML node, defined by the `HtmlNodeType` enum.
+    /// - `parent`: An optional reference-counted, mutable reference to the parent `HtmlNode`.
+    ///    - Use `None` if the node has no parent (e.g., it is the root node).
+    ///
+    /// # Returns
+    /// A new instance of `HtmlNode` with:
+    /// - The specified `node_type`.
+    /// - An empty list of children (`children`).
+    /// - The provided parent node reference (`parent`).
+    /// - An empty style map (`style`), which can later be used to store CSS-like properties.
+    ///
+    /// # Example
+    /// ```
+    /// use std::rc::Rc;
+    /// use std::cell::RefCell;
+    /// use std::collections::HashMap;
+    ///
+    /// let parent_node = Rc::new(RefCell::new(HtmlNode::new(HtmlNodeType::Div, None)));
+    /// let child_node = HtmlNode::new(HtmlNodeType::Span, Some(parent_node.clone()));
+    /// ```
     pub(crate) fn new(node_type: HtmlNodeType, parent: Option<Rc<RefCell<HtmlNode>>>) -> HtmlNode {
         HtmlNode {
             node_type,
             children: vec![],
             parent,
+            style: HashMap::new()
         }
     }
 }

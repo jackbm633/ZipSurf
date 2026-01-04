@@ -19,7 +19,7 @@ use std::collections::HashMap;
 /// // Example usage of the parser
 /// assert_eq!(parser.style[parser.index], 'b');
 /// ```
-struct CssParser {
+pub struct CssParser {
     style: Vec<char>,
     index: usize,
 }
@@ -143,37 +143,55 @@ impl CssParser {
         Ok(self.style[start..self.index].iter().collect())
     }
 
-    /// Checks if the current character in the `style` string matches the given `literal` character,
-    /// and increments the index if it matches. If the current character does not match or the index
-    /// is out of bounds, it panics with a parsing error.
+    /// ```rust
+    /// Attempts to match the current character in the `style` string with the provided literal.
+    ///
+    /// This function checks if the current character at the `index` position in the `style` vector
+    /// matches the provided `literal` character. If it matches, the `index` is incremented. If it
+    /// doesn't match or the index is out of bounds, an error is returned.
     ///
     /// # Arguments
     ///
-    /// * `literal` - A `char` representing the expected literal to match against the current character
-    /// in the `style` string.
+    /// * `literal` - A `char` representing the literal character to match against the current
+    ///               character in the `style` vector.
     ///
-    /// # Panics
+    /// # Returns
     ///
-    /// This function will panic if:
+    /// * `Ok(())` if the current character matches the given literal and the index is successfully advanced.
+    /// * `Err(String)` if the current character does not match the given literal or the index is out of bounds.
+    ///                The error contains a message indicating the expected literal.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error in the following cases:
+    /// - The `index` exceeds the bounds of the `style` string.
     /// - The current character in the `style` string does not match the provided `literal`.
-    /// - `self.index` is out of bounds for the `style` string.
     ///
     /// # Example
     ///
     /// ```rust
-    /// let mut parser = MyParser {
-    ///     style: String::from("abc"),
+    /// let mut parser = Parser {
+    ///     style: vec!['a', 'b', 'c'],
     ///     index: 0,
     /// };
-    /// parser.literal('a'); // Matches and increments the index
-    /// parser.literal('b'); // Matches and increments the index
-    /// parser.literal('x'); // Panics with "Parsing error: Expected literal 'x'"
+    ///
+    /// assert_eq!(parser.literal('a'), Ok(()));
+    /// assert_eq!(parser.literal('b'), Ok(()));
+    /// assert_eq!(parser.literal('x'), Err("Parsing error: Expected literal 'x'".to_string()));
     /// ```
-    fn literal(&mut self, literal: char) {
-        if !((self.style[self.index] == literal) && self.index < self.style.len()) {
-            panic!("Parsing error: Expected literal '{}'", literal);
+    ///
+    /// # Assumptions
+    ///
+    /// This function assumes the `self.style` field is a `Vec<char>` and `self.index` is a valid position or
+    /// potential position in the vector.
+    /// ```
+    fn literal(&mut self, literal: char) -> Result<(), String> {
+        if !(self.index < self.style.len() && (self.style[self.index] == literal)) {
+            return Err(format!("Parsing error: Expected literal '{}'", literal))
         }
         self.index += 1;
+
+        Ok(())
     }
 
     /// Parses a pair of words separated by a colon (`:`), while allowing
@@ -216,46 +234,119 @@ impl CssParser {
         Ok((prop.to_lowercase(), val))
     }
 
-    /// Parses a series of key-value pairs from the input, storing them in a `HashMap`.
-    ///
-    /// This method iterates over the style data, extracting key-value pairs by
-    /// repeatedly calling the `pair()` method. Each pair is followed by optional
-    /// whitespace, a mandatory semicolon (`';'`), and more optional whitespace. The
-    /// iteration continues until the end of the style input is reached.
+    /// Parses and constructs a `HashMap<String, String>` by iterating over the input data
+    /// and extracting key-value pairs.
     ///
     /// # Returns
-    ///
-    /// Returns a `Result` containing a `HashMap<String, String>` with all the parsed
-    /// key-value pairs if successful, or a `String` containing an error message if
-    /// an error occurs during parsing.
+    /// * `Ok(HashMap<String, String>)` - A map containing parsed key-value pairs if the parsing is successful.
+    /// * `Err(String)` - An error message indicating what went wrong during parsing if an unrecoverable error occurs.
     ///
     /// # Errors
+    /// This function may return an `Err` in the following cases:
+    /// - The `pair()` method encounters an unrecoverable error during key-value pair extraction.
+    /// - The `literal(';')` method fails to parse the expected delimiter (e.g., `;`) and error handling
+    ///   determines that the parsing process should terminate.
     ///
-    /// - Returns an `Err(String)` if the `pair()` method fails to parse a key-value pair.
-    /// - Errors may also arise if the expected semicolon or other contextual parsing rules
-    ///   are violated in the input.
+    /// # Behavior
+    /// - The function repeatedly attempts to parse key-value pairs until the input data is exhausted
+    ///   or an unrecoverable error causes the function to terminate early.
+    /// - If an error occurs during the extraction of a pair (`pair()`), or while ensuring
+    ///   the presence of a delimiter (`literal(';')`), the `handle_body_error()` method
+    ///   is invoked to determine whether parsing should continue or terminate.
+    /// - Whitespace around key-value pairs and delimiters is handled and ignored using
+    ///   the `whitespace()` method.
+    ///
+    /// # Implementation Details
+    /// - Calls to `self.pair()` extract a single key-value pair. If this extraction fails (`pair.is_err()`),
+    ///   the `handle_body_error()` method determines whether to continue parsing or exit the loop.
+    /// - Successfully parsed key-value pairs are added to the `HashMap` using `insert`.
+    /// - Delimiters (e.g., `;`) are validated after each key-value pair using the `literal(';')` method.
+    /// - Whitespace is consumed at appropriate points to allow flexible parsing of the input format.
+    ///
+    /// # Notes
+    /// - The function assumes that the instance's `self` contains fields like `index`, `style`, and methods
+    ///   such as `pair()`, `handle_body_error()`, `whitespace()`, and `literal()`, necessary for parsing logic.
+    /// - Designed to work with data structures or parsers specific to the caller's context.
     ///
     /// # Example
+    /// ```rust
+    /// use std::collections::HashMap;
+    ///
+    /// // Assuming `self` is appropriately defined and initialized
+    /// let result: Result<HashMap<String, String>, String> = self.body();
+    ///
+    /// match result {
+    ///     Ok(pairs) => {
+    ///         for (key, value) in pairs {
+    ///             println!("Key: {}, Value: {}", key, value);
+    ///         }
+    ///     },
+    ///     Err(err) => {
+    ///         eprintln!("Failed to parse body: {}", err);
+    ///     }
+    /// }
     /// ```
-    /// let mut parser = YourParser::new("key1: value1; key2: value2;");
-    /// let result = parser.body();
-    /// assert!(result.is_ok());
-    /// let map = result.unwrap();
-    /// assert_eq!(map.get("key1").unwrap(), "value1");
-    /// assert_eq!(map.get("key2").unwrap(), "value2");
-    /// ```
-    fn body(&mut self) -> Result<HashMap<String, String>, String> {
+    pub(crate) fn body(&mut self) -> Result<HashMap<String, String>, String> {
         let mut pairs = HashMap::<String, String>::new();
         while self.index < self.style.len() {
-            let pair = self.pair()?;
-            pairs.insert(pair.0, pair.1);
+            let pair = self.pair();
+            if pair.is_err() {
+                let should_break = self.handle_body_error();
+                if should_break {
+                    break;
+                }
+            }
+            let pair_unwrapped = pair?;
+            pairs.insert(pair_unwrapped.0, pair_unwrapped.1);
             self.whitespace();
-            self.literal(';');
+            if self.literal(';').is_err() {
+                let should_break = self.handle_body_error();
+                if should_break {
+                    break;
+                }
+            }
             self.whitespace();
         }
         Ok(
             pairs
         )
+    }
+
+    /// Handles errors encountered in parsing a body of code.
+    ///
+    /// This function attempts to recover from a parsing error by skipping
+    /// over tokens until a specific delimiter (`';'`) is encountered. Upon
+    /// finding the delimiter, it consumes it and performs necessary cleanup
+    /// (e.g., handling surrounding whitespace).
+    ///
+    /// # Returns
+    /// - `false`: If the recovery process is successful (delimiter found and handled).
+    /// - `true`: If recovery could not proceed (delimiter not found).
+    ///
+    /// # Panics
+    /// The function will panic if the expected delimiter (`';'`) is not found
+    /// after calling the `self.literal(';')` method. The panic message is
+    /// currently a placeholder and should be replaced with a more descriptive one.
+    ///
+    /// # Implementation Details
+    /// - The function uses `self.ignore_until` to skip over tokens until a `';'`
+    ///   is encountered. It then processes the delimiter using `self.literal(';')`
+    ///   and removes any surrounding whitespace with `self.whitespace()`.
+    ///
+    /// # Examples
+    /// ```
+    /// let mut parser = Parser::new();
+    /// let success = parser.handle_body_error();
+    /// assert_eq!(success, false); // If recovery succeeded with the `;` delimiter
+    /// ```
+    fn handle_body_error(&mut self) -> bool {
+        let why = self.ignore_until(vec![';']);
+        if (why == Some(';')) {
+            self.literal(';').expect("TODO: panic message");
+            self.whitespace();
+            return false;
+        }
+        true
     }
 
     /// Advances the internal index until one of the specified characters (`literals`)
@@ -304,3 +395,4 @@ impl CssParser {
 
 
 }
+
