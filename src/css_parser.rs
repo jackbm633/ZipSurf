@@ -453,6 +453,57 @@ impl CssParser {
         Ok(out)
     }
 
+    /// Parses a series of style rules from the provided input, extracting
+    /// a vector of selectors paired with their corresponding declarations.
+    ///
+    /// # Returns
+    /// - `Ok(Vec<(Selector, HashMap<String, String>)>)`: A vector where each
+    ///   element consists of a `Selector` and its associated CSS declarations
+    ///   as a HashMap of property-value pairs.
+    /// - `Err(String)`: An error message if parsing fails at any point.
+    ///
+    /// # Process
+    /// 1. Iterates through the input style data until all content is processed.
+    /// 2. Skips over any whitespace and attempts to parse a single `Selector`.
+    /// 3. Expects an opening `{` to denote the beginning of the declaration block.
+    /// 4. Skips over any whitespace and parses the declaration body into a `HashMap`.
+    /// 5. Expects a closing `}` to denote the end of the declaration block.
+    /// 6. Adds the parsed `(Selector, HashMap<String, String>)` pair to the result vector.
+    ///
+    /// # Errors
+    /// - Returns an error if:
+    ///   - Parsing a selector fails.
+    ///   - Missing or invalid `{` or `}` delimiters.
+    ///   - Parsing the declaration body fails.
+    ///
+    /// # Example
+    /// Assuming `self.style` contains valid CSS-like input to be parsed:
+    /// ```rust
+    /// let parsed_rules = parser.parse();
+    /// match parsed_rules {
+    ///     Ok(rules) => {
+    ///         for (selector, declarations) in rules {
+    ///             println!("Selector: {:?}", selector);
+    ///             println!("Declarations: {:?}", declarations);
+    ///         }
+    ///     }
+    ///     Err(err) => eprintln!("Failed to parse: {}", err);
+    /// }
+    /// ```
+    pub fn parse(&mut self) -> Result<Vec<(Selector, HashMap<String, String>)>, String> {
+        let mut rules = Vec::<(Selector, HashMap<String, String>)>::new();
+        while self.index < self.style.len() {
+            self.whitespace();
+            let selector = self.selector()?;
+            self.literal('{')?;
+            self.whitespace();
+            let body = self.body()?;
+            self.literal('}')?;
+            rules.push((selector, body));
+        }
+        Ok(rules)
+    }
+
 
 
 }
