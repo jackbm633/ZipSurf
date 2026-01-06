@@ -236,61 +236,47 @@ impl CssParser {
         Ok((prop.to_lowercase(), val))
     }
 
-    /// Parses and constructs a `HashMap<String, String>` by iterating over the input data
-    /// and extracting key-value pairs.
+
+    /// Parses and extracts key-value pairs from a structured style body until
+    /// the closing brace (`}`) is encountered or an error is handled.
+    ///
+    /// This method processes the contents of the `self.style` field starting
+    /// from the current position (`self.index`) and returns a `HashMap` containing
+    /// the key-value pairs. If parsing errors occur, they are handled using the
+    /// `handle_body_error` function, which determines whether parsing should terminate.
     ///
     /// # Returns
-    /// * `Ok(HashMap<String, String>)` - A map containing parsed key-value pairs if the parsing is successful.
-    /// * `Err(String)` - An error message indicating what went wrong during parsing if an unrecoverable error occurs.
-    ///
-    /// # Errors
-    /// This function may return an `Err` in the following cases:
-    /// - The `pair()` method encounters an unrecoverable error during key-value pair extraction.
-    /// - The `literal(';')` method fails to parse the expected delimiter (e.g., `;`) and error handling
-    ///   determines that the parsing process should terminate.
+    /// - `Ok(HashMap<String, String>)`: A hashmap containing the extracted key-value pairs.
+    /// - `Err(String)`: An error message if parsing fails unrecoverably.
     ///
     /// # Behavior
-    /// - The function repeatedly attempts to parse key-value pairs until the input data is exhausted
-    ///   or an unrecoverable error causes the function to terminate early.
-    /// - If an error occurs during the extraction of a pair (`pair()`), or while ensuring
-    ///   the presence of a delimiter (`literal(';')`), the `handle_body_error()` method
-    ///   is invoked to determine whether parsing should continue or terminate.
-    /// - Whitespace around key-value pairs and delimiters is handled and ignored using
-    ///   the `whitespace()` method.
+    /// - Processes until the end of the body (`'}`) or until an unrecoverable error occurs.
+    /// - Key-value pairs are separated by semicolons (`;`), and the method skips any
+    ///   whitespace between pairs or after the semicolons.
+    /// - Calls `self.pair` to parse each key-value pair.
+    /// - If `self.pair` or `self.literal(';')` returns an error, the error is handled
+    ///   using `self.handle_body_error`.
     ///
-    /// # Implementation Details
-    /// - Calls to `self.pair()` extract a single key-value pair. If this extraction fails (`pair.is_err()`),
-    ///   the `handle_body_error()` method determines whether to continue parsing or exit the loop.
-    /// - Successfully parsed key-value pairs are added to the `HashMap` using `insert`.
-    /// - Delimiters (e.g., `;`) are validated after each key-value pair using the `literal(';')` method.
-    /// - Whitespace is consumed at appropriate points to allow flexible parsing of the input format.
+    /// # Error Handling
+    /// - If an error occurs during pair extraction or semicolon parsing,
+    ///   `self.handle_body_error` determines if the error is recoverable. If
+    ///   unrecoverable, parsing terminates and the current state is returned.
     ///
-    /// # Notes
-    /// - The function assumes that the instance's `self` contains fields like `index`, `style`, and methods
-    ///   such as `pair()`, `handle_body_error()`, `whitespace()`, and `literal()`, necessary for parsing logic.
-    /// - Designed to work with data structures or parsers specific to the caller's context.
+    /// # Examples
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # use your_module::YourStruct;
+    /// let mut parser = YourStruct::new("{key1: value1; key2: value2;}");
+    /// let result = parser.body();
+    /// assert!(result.is_ok());
     ///
-    /// # Example
-    /// ```rust
-    /// use std::collections::HashMap;
-    ///
-    /// // Assuming `self` is appropriately defined and initialized
-    /// let result: Result<HashMap<String, String>, String> = self.body();
-    ///
-    /// match result {
-    ///     Ok(pairs) => {
-    ///         for (key, value) in pairs {
-    ///             println!("Key: {}, Value: {}", key, value);
-    ///         }
-    ///     },
-    ///     Err(err) => {
-    ///         eprintln!("Failed to parse body: {}", err);
-    ///     }
-    /// }
+    /// let map = result.unwrap();
+    /// assert_eq!(map.get("key1"), Some(&"value1".to_string()));
+    /// assert_eq!(map.get("key2"), Some(&"value2".to_string()));
     /// ```
     pub(crate) fn body(&mut self) -> Result<HashMap<String, String>, String> {
         let mut pairs = HashMap::<String, String>::new();
-        while self.index < self.style.len() {
+        while self.index < self.style.len() && self.style[self.index] != '}' {
             let pair = self.pair();
             if pair.is_err() {
                 let should_break = self.handle_body_error();
@@ -314,35 +300,30 @@ impl CssParser {
         )
     }
 
-    /// Handles errors encountered in parsing a body of code.
+    /// Handles errors encountered while parsing the body of a construct.
     ///
-    /// This function attempts to recover from a parsing error by skipping
-    /// over tokens until a specific delimiter (`';'`) is encountered. Upon
-    /// finding the delimiter, it consumes it and performs necessary cleanup
-    /// (e.g., handling surrounding whitespace).
+    /// This method attempts to recover from a parsing error by ignoring tokens until
+    /// one of the specified delimiters (`;` or `}`) is encountered. If the delimiter `;`
+    /// is found, the method consumes it, skips any subsequent whitespace, and signals
+    /// that the error recovery process completed without further issues. If no such
+    /// delimiter is found (or if the delimiter is `}`), the method determines that it
+    /// cannot recover further.
     ///
     /// # Returns
-    /// - `false`: If the recovery process is successful (delimiter found and handled).
-    /// - `true`: If recovery could not proceed (delimiter not found).
+    /// * `false` - if the parsing error was recovered successfully and a `;` was found.
+    /// * `true` - if recovery was impossible (or if `}` was encountered).
     ///
     /// # Panics
-    /// The function will panic if the expected delimiter (`';'`) is not found
-    /// after calling the `self.literal(';')` method. The panic message is
-    /// currently a placeholder and should be replaced with a more descriptive one.
+    /// This method will panic with a "TODO: panic message" if the `literal` method
+    /// fails to consume and match the `;` character.
     ///
-    /// # Implementation Details
-    /// - The function uses `self.ignore_until` to skip over tokens until a `';'`
-    ///   is encountered. It then processes the delimiter using `self.literal(';')`
-    ///   and removes any surrounding whitespace with `self.whitespace()`.
-    ///
-    /// # Examples
-    /// ```
+    /// # Example
+    /// ```rust
     /// let mut parser = Parser::new();
-    /// let success = parser.handle_body_error();
-    /// assert_eq!(success, false); // If recovery succeeded with the `;` delimiter
+    /// assert!(parser.handle_body_error()); // Example usage
     /// ```
     fn handle_body_error(&mut self) -> bool {
-        let why = self.ignore_until(vec![';']);
+        let why = self.ignore_until(vec![';', '}']);
         if (why == Some(';')) {
             self.literal(';').expect("TODO: panic message");
             self.whitespace();
