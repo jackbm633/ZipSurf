@@ -434,58 +434,128 @@ impl CssParser {
         Ok(out)
     }
 
-    /// Parses a series of style rules from the provided input, extracting
-    /// a vector of selectors paired with their corresponding declarations.
+    /// Parses a set of rules from the internal `style` representation and returns the result.
     ///
     /// # Returns
-    /// - `Ok(Vec<(Selector, HashMap<String, String>)>)`: A vector where each
-    ///   element consists of a `Selector` and its associated CSS declarations
-    ///   as a HashMap of property-value pairs.
-    /// - `Err(String)`: An error message if parsing fails at any point.
     ///
-    /// # Process
-    /// 1. Iterates through the input style data until all content is processed.
-    /// 2. Skips over any whitespace and attempts to parse a single `Selector`.
-    /// 3. Expects an opening `{` to denote the beginning of the declaration block.
-    /// 4. Skips over any whitespace and parses the declaration body into a `HashMap`.
-    /// 5. Expects a closing `}` to denote the end of the declaration block.
-    /// 6. Adds the parsed `(Selector, HashMap<String, String>)` pair to the result vector.
+    /// * `Ok(Vec<(Selector, HashMap<String, String>)>)` - A vector of tuples where each tuple contains:
+    ///   - A `Selector` representing a CSS selector.
+    ///   - A `HashMap<String, String>` representing a collection of style properties for the selector.
+    /// * `Err(String)` - A string specifying the reason for the failure during parsing.
+    ///
+    /// # Behavior
+    ///
+    /// This method iterates through the `style` data, attempting to parse CSS-style rules.
+    /// It repeatedly calls an internal parsing method (`parse_internal`) to extract selectors and style
+    /// properties. If parsing fails during this process:
+    /// - It attempts to recover by skipping content until the next '}' character.
+    /// - If no recovery point is found, it halts further parsing and returns the rules collected so far.
+    ///
+    /// After successfully parsing a rule, it expects a closing '}' character and processes any whitespace following it.
     ///
     /// # Errors
-    /// - Returns an error if:
-    ///   - Parsing a selector fails.
-    ///   - Missing or invalid `{` or `}` delimiters.
-    ///   - Parsing the declaration body fails.
+    ///
+    /// If the `literal` method fails or the parsing logic encounters an unrecoverable issue,
+    /// the method will return an error containing a descriptive string.
     ///
     /// # Example
-    /// Assuming `self.style` contains valid CSS-like input to be parsed:
+    ///
     /// ```rust
+    /// let mut parser = Parser::new("a { color: red; } b { font-size: 16px; }");
     /// let parsed_rules = parser.parse();
-    /// match parsed_rules {
-    ///     Ok(rules) => {
-    ///         for (selector, declarations) in rules {
-    ///             println!("Selector: {:?}", selector);
-    ///             println!("Declarations: {:?}", declarations);
-    ///         }
-    ///     }
-    ///     Err(err) => eprintln!("Failed to parse: {}", err);
-    /// }
+    /// assert!(parsed_rules.is_ok());
+    /// let rules = parsed_rules.unwrap();
+    /// assert_eq!(rules.len(), 2);
     /// ```
     pub fn parse(&mut self) -> Result<Vec<(Selector, HashMap<String, String>)>, String> {
         let mut rules = Vec::<(Selector, HashMap<String, String>)>::new();
         while self.index < self.style.len() {
-            self.whitespace();
-            let selector = self.selector()?;
-            self.literal('{')?;
-            self.whitespace();
-            let body = self.body()?;
-            self.literal('}')?;
-            rules.push((selector, body));
+            let result = self.parse_internal(&mut rules);
+            match result {
+                Ok(_) => (),
+                Err(_err) =>  {
+                    let why = self.ignore_until(Vec::from(['}']));
+                    if why == Some('}') {
+                        self.literal('}')?;
+                        self.whitespace();
+                    } else {
+                        break
+                    }
+                }
+            }
         }
         Ok(rules)
     }
 
-
-
+    /// Parses a CSS-like rule and adds it to the provided vector of rules.
+    ///
+    /// This function processes input to extract a CSS selector and its associated
+    /// style declarations, then appends them together as a tuple to the provided
+    /// vector. The input is parsed in the following steps:
+    ///
+    /// 1. Skips leading whitespace characters.
+    /// 2. Parses the selector using the `selector` method.
+    /// 3. Verifies and consumes the opening '{' literal.
+    /// 4. Skips any additional whitespace.
+    /// 5. Extracts the body (key-value style declarations) using the `body` method.
+    /// 6. Verifies and consumes the closing '}' literal.
+    /// 7. Pushes the parsed `(selector, body)` pair into the `rules` vector.
+    ///
+    /// # Parameters
+    ///
+    /// - `rules`: A mutable reference to a vector of tuples, where each tuple
+    ///   consists of a `Selector` (representing the selector for a rule) and a
+    ///   `HashMap<String, String>` (representing the style key-value declarations).
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(())`: Indicates successful parsing and appending to the rules vector.
+    /// - `Err(String)`: Returns an error message if parsing fails at any step.
+    ///
+    /// # Errors
+    ///
+    /// An error will be returned if any of the following parsing steps fail:
+    /// - Selector parsing (`self.selector` returns an error).
+    /// - Literal checking (`self.literal('{')` or `self.literal('}')` fails).
+    /// - Body parsing (`self.body` returns an error).
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// let mut parser = MyParser::new();
+    /// let mut rules = Vec::new();
+    ///
+    /// match parser.parse_internal(&mut rules) {
+    ///     Ok(_) => {
+    ///         println!("Successfully parsed the rule!");
+    ///         println!("{:?}", rules);
+    ///     }
+    ///     Err(e) => {
+    ///         eprintln!("Failed to parse rule: {}", e);
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// # Notes
+    ///
+    /// This method assumes that `self.whitespace`, `self.selector`, `self.literal`,
+    /// and `self.body` are implemented appropriately and will handle their
+    /// respective tasks with robustness.
+    ///
+    /// # Dependencies
+    ///
+    /// - `Selector`: A type that represents a CSS selector.
+    /// - `HashMap<String, String>`: The data structure used to store key-value
+    ///   pairs of style declarations.
+    fn parse_internal(&mut self, rules: &mut Vec<(Selector, HashMap<String, String>)>) -> Result<(), String> {
+        self.whitespace();
+        let selector = self.selector()?;
+        self.literal('{')?;
+        self.whitespace();
+        let body = self.body()?;
+        self.literal('}')?;
+        rules.push((selector, body));
+        Ok(())
+    }
 }
 
