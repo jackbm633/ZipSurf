@@ -8,6 +8,7 @@ use eframe::egui;
 use egui::{Color32, Galley, Pos2, Rect, Stroke};
 use std::sync::Arc;
 use eframe::epaint::StrokeKind;
+use lazy_static::lazy_static;
 use crate::css_parser::CssParser;
 use crate::html_parser::HtmlParser;
 use crate::selector::Selector;
@@ -37,8 +38,9 @@ use crate::selector::Selector;
 /// # Notes
 /// - Ensure that the "browser.css" file contains valid CSS content.
 /// - Changes to the referenced file will require recompilation to reflect updates in the binary.
-const DEFAULT_STYLE_SHEET: &str = include_str!("../assets/browser.css");
-
+lazy_static! {
+    static ref DEFAULT_STYLE_SHEET: Vec<(Selector, HashMap<String, String>)> = CssParser::new(include_str!("../assets/browser.css")).parse().unwrap();
+}
 /// The primary state controller for the web browser engine.
 ///
 /// This struct manages the lifecycle of web content from initial URL fetching
@@ -133,7 +135,7 @@ impl Browser {
                 };
 
                 self.nodes =  Some(parser.parse());
-                Self::style(Some(self.nodes.clone().unwrap()), vec![]);
+                Self::style(Some(self.nodes.clone().unwrap()), &DEFAULT_STYLE_SHEET);
                 self.document = Some(LayoutNode::new_document(self.nodes.clone().unwrap()));
             }
             Err(e) => {
@@ -198,43 +200,46 @@ impl Browser {
     /// - The expected behavior of `CssParser::new` and its `body` method is to parse inline styles and
     ///   resolve them into a `HashMap<String, String>`. Any deviations from this expected behavior may
     ///   cause a panic.
-    fn style(node: Option<Rc<RefCell<HtmlNode>>>, rules: Vec<(Selector, HashMap<String, String>)>) {
-        match node {
-            None => {panic!("Browser document not initialized.")}
-            Some(nd) => {
-                let mut borrow_node = nd.borrow_mut();
-                match &borrow_node.node_type {
-                    HtmlNodeType::Element(el) => {
-                        for (selector, rules) in rules {
-                            if !selector.matches(nd.clone()) {
-                                continue
-                            }
-                            for (property, value) in rules.iter() {
-                                nd.borrow_mut().style.insert(property.to_string(), value.to_string());
-                            }
-                        }
+    fn style(node: Option<Rc<RefCell<HtmlNode>>>, rules: &Vec<(Selector, HashMap<String, String>)>) {
+        let nd = node.expect("Browser document not initialized.");
 
-                        if el.attributes.contains_key("style") {
-                            let mut parser = CssParser::new(el.attributes["style"].as_str());
-                            let pairs = parser.body();
-                            match pairs {
-                                Ok(pairs_map) => {
-                                    for (key, value) in pairs_map {
-                                        borrow_node.style.insert(
-                                            key.to_string(), value.to_string());
-                                    }
-                                }
-                                Err(_) => {panic!()}
-                            }
-                        }
-                    }
-                    HtmlNodeType::Text(_) => {}
-                }
+        let mut css_style_maps = Vec::new();
+        for (selector, style_map) in rules {
+            if selector.matches(nd.clone()) {
+                css_style_maps.push(style_map);
+            }
+        }
 
-                for child in borrow_node.children.clone() {
-                    Self::style(Some(child), vec![])
+
+        let mut node_ref = nd.borrow_mut();
+
+        let inline_style_attr = if let HtmlNodeType::Element(el)
+            = &node_ref.node_type {
+            el.attributes.get("style").cloned()
+        } else {
+            None
+        };
+
+        for style_map in css_style_maps {
+            for (property, value) in style_map {
+                node_ref.style.insert(property.clone(), value.clone());
+            }
+        }
+
+        if let Some(style_str) = inline_style_attr {
+            let mut parser = CssParser::new(&style_str);
+            if let Ok(pairs_map) = parser.body() {
+                for (key, value) in pairs_map {
+                    node_ref.style.insert(key, value);
                 }
             }
+        }
+
+
+        // 3. Recursive phase
+        let children: Vec<Rc<RefCell<HtmlNode>>> = nd.borrow().children.clone();
+        for child in children {
+            Self::style(Some(child), rules);
         }
     }
     

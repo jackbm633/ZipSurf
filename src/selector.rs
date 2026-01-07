@@ -26,6 +26,7 @@ use crate::node::{HtmlNode, HtmlNodeType};
 ///
 /// Note: Replace `SelectorType::ExampleType` with the appropriate
 /// implementation of `SelectorType`.
+#[derive(Clone)]
 pub struct Selector {
     pub(crate) selector: SelectorType
 }
@@ -52,6 +53,7 @@ pub struct Selector {
 ///     println!("Matching tag: {}", tag);
 /// }
 /// ```
+#[derive(Clone)]
 pub enum SelectorType {
     Tag { tag: String },
     Descendant { ancestor: Box<Selector>, descendant: Box<Selector>}
