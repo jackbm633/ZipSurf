@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use crate::layout::{LayoutNode, HEIGHT, VSTEP};
 use crate::node::{HtmlNodeType, HtmlNode};
@@ -9,6 +10,7 @@ use std::sync::Arc;
 use eframe::epaint::StrokeKind;
 use crate::css_parser::CssParser;
 use crate::html_parser::HtmlParser;
+use crate::selector::Selector;
 
 /// The primary state controller for the web browser engine.
 ///
@@ -104,7 +106,7 @@ impl Browser {
                 };
 
                 self.nodes =  Some(parser.parse());
-                Self::style(Some(self.nodes.clone().unwrap()));
+                Self::style(Some(self.nodes.clone().unwrap()), vec![]);
                 self.document = Some(LayoutNode::new_document(self.nodes.clone().unwrap()));
             }
             Err(e) => {
@@ -113,75 +115,78 @@ impl Browser {
         }
     }
 
-    /// Applies inline CSS styles to an HTML node and its descendants.
+    /// Applies CSS styling rules to an HTML node and its descendants.
     ///
-    /// # Description
-    /// This function parses the `style` attribute of an HTML element (if present),
-    /// extracts the individual CSS properties, and applies them to the `style`
-    /// hashmap of the node. The function then recursively applies the same
-    /// operation to all child nodes of the given HTML node. It expects the input
-    /// node to be wrapped in an `Option<Rc<RefCell<HtmlNode>>>` for ownership
-    /// and mutability management.
+    /// This function traverses the structure of an HTML document, starting from the given node.
+    /// It matches CSS selectors with elements, applies the corresponding styles, and resolves
+    /// inline styles if defined in the `style` attribute of elements. The styles are stored in
+    /// the `style` attribute of each `HtmlNode` object.
     ///
     /// # Parameters
-    /// - `node`: An `Option<Rc<RefCell<HtmlNode>>>` representing the HTML node
-    ///   to which styles will be applied. If the node is `None`, the function
-    ///   will panic with a descriptive error message. If it's an element node with
-    ///   a `style` attribute, the CSS properties will be parsed and applied to the
-    ///   node's `style` attribute.
-    ///
-    /// # Panics
-    /// - The function will panic if:
-    ///   - The provided `node` is `None`, indicating that no browser document
-    ///     (or root node) is initialized.
-    ///   - The `style` attribute of the element contains invalid CSS that
-    ///     causes the CSS parser to fail.
+    /// - `node`: An optional reference-counted pointer (`Rc`) to a mutable `HtmlNode`, which is
+    ///           the starting point of the HTML tree where the styles will be applied. If `None`,
+    ///           the function panics because the browser document is not initialized.
+    /// - `rules`: A vector of CSS rules, where each rule is represented as a tuple containing:
+    ///   - `Selector`: A CSS selector that determines which elements the rule applies to.
+    ///   - `HashMap<String, String>`: A map of CSS property names and their associated values.
     ///
     /// # Behavior
-    /// - For element nodes:
-    ///   - Parses the `style` attribute (if present) using the `CssParser`.
-    ///   - On successful parsing, each key-value pair of CSS properties is inserted
-    ///     into the node's `style` hashmap.
-    ///   - On parsing errors, a panic occurs.
-    /// - For text nodes:
-    ///   - No styles are processed, as text nodes do not have a `style` attribute.
-    /// - Recursively calls itself on all child nodes of the current node to ensure
-    ///   styles are applied to the entire subtree.
+    /// 1. Checks if the `node` is `None`. If it is `None`, the function panics with the message:
+    ///    "Browser document not initialized."
+    /// 2. If the `node` is present:
+    ///    - If the node is an element (`HtmlNodeType::Element`):
+    ///      - Iterates over the provided `rules`.
+    ///      - Matches the `Selector` against the current `node`. If the selector doesn't match,
+    ///        the rule is skipped.
+    ///      - For matching selectors, updates the node's `style` by adding CSS properties and
+    ///        their values from the rule to the `style` attribute of the node.
+    ///      - Resolves and parses any inline styles defined in the `style` attribute of the
+    ///        element, applying them to the node's `style`.
+    ///    - If the node is a text node (`HtmlNodeType::Text`), it skips processing as styles
+    ///      are not applicable to text nodes.
+    /// 3. Recursively applies styles to all child nodes of the current node.
     ///
-    /// # Example
-    /// ```rust
-    /// let html_node = Rc::new(RefCell::new(HtmlNode {
-    ///     node_type: HtmlNodeType::Element(HtmlElement {
-    ///         attributes: [("style".to_string(), "color: red; font-size: 14px;".to_string())].iter().cloned().collect(),
-    ///     }),
-    ///     style: HashMap::new(),
-    ///     children: vec![],
-    /// }));
+    /// # Panics
+    /// - If the `node` is `None`, indicating an uninitialized document.
+    /// - If the inline `style` attribute of an element fails to parse using the `CssParser`,
+    ///   the function will panic without a specific error message.
     ///
-    /// HtmlStyler::style(Some(html_node.clone()));
-    ///
-    /// // After calling `style`, the node's `style` hashmap will contain:
-    /// // - "color" -> "red"
-    /// // - "font-size" -> "14px"
+    /// # Examples
+    /// ```
+    /// // Example usage:
+    /// let root_node = Some(Rc::new(RefCell::new(HtmlNode::new(HtmlNodeType::Element(
+    ///     ElementData::new("div".to_string(), HashMap::new())
+    /// )))));
+    /// let rules = vec![
+    ///     (Selector::new("div".to_string()), HashMap::from([("color".to_string(), "red".to_string())]))
+    /// ];
+    /// style(root_node, rules);
     /// ```
     ///
-    /// # Notes
-    /// - This function assumes that the `CssParser` has been properly implemented
-    ///   and that it can parse valid CSS strings.
-    /// - The `HtmlNode` struct must implement `RefCell` for internal mutability
-    ///   and should provide a `style` hashmap for storing parsed styles.
+    /// In this example, the `div` element will have its `color` property set to "red".
     ///
-    /// # Dependencies
-    /// - `CssParser` is responsible for parsing the CSS specified in the `style` attribute.
-    /// - `HtmlNode` and `HtmlNodeType` are core data structures for representing
-    ///   the HTML DOM tree.
-    fn style(node: Option<Rc<RefCell<HtmlNode>>>) {
+    /// # Notes
+    /// - This function assumes that `Selector::matches` is defined and correctly matches selectors
+    ///   to elements.
+    /// - The expected behavior of `CssParser::new` and its `body` method is to parse inline styles and
+    ///   resolve them into a `HashMap<String, String>`. Any deviations from this expected behavior may
+    ///   cause a panic.
+    fn style(node: Option<Rc<RefCell<HtmlNode>>>, rules: Vec<(Selector, HashMap<String, String>)>) {
         match node {
             None => {panic!("Browser document not initialized.")}
             Some(nd) => {
                 let mut borrow_node = nd.borrow_mut();
                 match &borrow_node.node_type {
                     HtmlNodeType::Element(el) => {
+                        for (selector, rules) in rules {
+                            if !selector.matches(nd.clone()) {
+                                continue
+                            }
+                            for (property, value) in rules.iter() {
+                                nd.borrow_mut().style.insert(property.to_string(), value.to_string());
+                            }
+                        }
+
                         if el.attributes.contains_key("style") {
                             let mut parser = CssParser::new(el.attributes["style"].as_str());
                             let pairs = parser.body();
@@ -200,7 +205,7 @@ impl Browser {
                 }
 
                 for child in borrow_node.children.clone() {
-                    Self::style(Some(child))
+                    Self::style(Some(child), vec![])
                 }
             }
         }

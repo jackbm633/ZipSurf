@@ -113,7 +113,7 @@ impl Selector {
     ///     println!("The node does not match the selector.");
     /// }
     /// ```
-    fn matches(&self, mut node: Rc<RefCell<HtmlNode>>) -> bool {
+    pub(crate) fn matches(&self, mut node: Rc<RefCell<HtmlNode>>) -> bool {
         match &self.selector {
             SelectorType::Tag { tag } => {
                 match &node.borrow().node_type {
