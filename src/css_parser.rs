@@ -230,7 +230,7 @@ impl CssParser {
     fn pair(&mut self) -> Result<(String, String), String> {
         let prop = self.word()?;
         self.whitespace();
-        self.literal(':');
+        self.literal(':')?;
         self.whitespace();
         let val = self.word()?;
         Ok((prop.to_lowercase(), val))
