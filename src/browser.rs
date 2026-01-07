@@ -12,6 +12,33 @@ use crate::css_parser::CssParser;
 use crate::html_parser::HtmlParser;
 use crate::selector::Selector;
 
+/// A constant that holds the default stylesheet for a browser application.
+///
+/// # Description
+/// The `DEFAULT_STYLE_SHEET` constant is a string literal that contains the
+/// contents of the "browser.css" stylesheet file located in the `../assets` directory.
+/// It is embedded into the binary at compile time using the `include_str!` macro.
+///
+/// # Usage
+/// This constant can be used as the initial or fallback stylesheet for a
+/// browser-like application to ensure a consistent default appearance.
+///
+/// # Example
+/// ```rust
+/// fn main() {
+///     println!("Default stylesheet: {}", DEFAULT_STYLE_SHEET);
+/// }
+/// ```
+///
+/// # File Location
+/// The "browser.css" file must exist in the specified relative path (`../assets`) at compile time.
+/// If the file is not found, the compilation will fail.
+///
+/// # Notes
+/// - Ensure that the "browser.css" file contains valid CSS content.
+/// - Changes to the referenced file will require recompilation to reflect updates in the binary.
+const DEFAULT_STYLE_SHEET: &str = include_str!("../assets/browser.css");
+
 /// The primary state controller for the web browser engine.
 ///
 /// This struct manages the lifecycle of web content from initial URL fetching
