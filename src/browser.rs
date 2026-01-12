@@ -135,6 +135,19 @@ impl Browser {
                 };
 
                 self.nodes =  Some(parser.parse());
+
+                let links =
+                    HtmlNode::tree_to_vec(self.nodes.clone().unwrap(), &mut vec![])
+                        .iter().filter_map(|p| match &p.borrow().node_type {
+                        HtmlNodeType::Element(e) => {
+                            if e.tag == "link" && e.attributes.contains_key("rel") && e.attributes.get("rel").unwrap() == "stylesheet"
+                            && e.attributes.contains_key("href") {
+                                return Some(e.attributes.get("href").unwrap().to_string())
+                            }
+                            None
+                        }
+                        HtmlNodeType::Text(_) => {None}
+                    }).collect::<Vec<String>>();
                 Self::style(Some(self.nodes.clone().unwrap()), &DEFAULT_STYLE_SHEET);
                 self.document = Some(LayoutNode::new_document(self.nodes.clone().unwrap()));
             }
