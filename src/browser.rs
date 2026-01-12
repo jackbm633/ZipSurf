@@ -210,39 +210,41 @@ impl Browser {
             }
         }
 
+        // Encapsulate the mutation in a block to drop the borrow_mut() before recursion
+        let children = {
+            let mut node_ref = nd.borrow_mut();
 
-        let mut node_ref = nd.borrow_mut();
+            let inline_style_attr = if let HtmlNodeType::Element(el)
+                = &node_ref.node_type {
+                el.attributes.get("style").cloned()
+            } else {
+                None
+            };
 
-        let inline_style_attr = if let HtmlNodeType::Element(el)
-            = &node_ref.node_type {
-            el.attributes.get("style").cloned()
-        } else {
-            None
-        };
-
-        for style_map in css_style_maps {
-            for (property, value) in style_map {
-                node_ref.style.insert(property.clone(), value.clone());
-            }
-        }
-
-        if let Some(style_str) = inline_style_attr {
-            let mut parser = CssParser::new(&style_str);
-            if let Ok(pairs_map) = parser.body() {
-                for (key, value) in pairs_map {
-                    node_ref.style.insert(key, value);
+            for style_map in css_style_maps {
+                for (property, value) in style_map {
+                    node_ref.style.insert(property.clone(), value.clone());
                 }
             }
-        }
+
+            if let Some(style_str) = inline_style_attr {
+                let mut parser = CssParser::new(&style_str);
+                if let Ok(pairs_map) = parser.body() {
+                    for (key, value) in pairs_map {
+                        node_ref.style.insert(key, value);
+                    }
+                }
+            }
+
+            node_ref.children.clone()
+        };
 
 
-        // 3. Recursive phase
-        let children: Vec<Rc<RefCell<HtmlNode>>> = nd.borrow().children.clone();
+        // 3. Recursive phase - the borrow on 'nd' is now released
         for child in children {
             Self::style(Some(child), rules);
         }
     }
-    
 
     /// Configures and sets up custom fonts for the `egui` UI context.
     ///
