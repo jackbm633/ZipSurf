@@ -166,6 +166,38 @@ impl Url {
             Err(format!("Failed to connect to host {}", self.host).to_string())
         }
     }
+    
+    pub fn resolve(&self, mut url: &mut str) -> Result<Url, String> {
+        if url.contains("://") {
+            return Url::new(url);
+        }
+        if url.starts_with("//") {
+            return Url::new(&format!("{}:{}", self.scheme, url));
+        }
+
+        let resolved_path = if url.starts_with('/') {
+            url.to_string()
+        } else {
+            let base_dir = match self.path.rfind('/') {
+                Some(idx) => &self.path[..idx],
+                None => "",
+            };
+            format!("{}/{}", base_dir, url)
+        };
+
+        let mut segments = Vec::new();
+        for segment in resolved_path.split('/') {
+            match segment {
+                "" | "." => continue,
+                ".." => { segments.pop(); },
+                s => segments.push(s),
+            }
+        }
+        
+        let normalised_path = format!("/{}", segments.join("/"));
+
+        Url::new(&format!("{}://{}{}", self.scheme, self.host, normalised_path))
+    }
 }
 
 trait ReadWrite: Read + Write + Debug {}
