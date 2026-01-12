@@ -114,6 +114,51 @@ impl HtmlNode {
             style: HashMap::new()
         }
     }
+
+    /// Converts a hierarchical tree structure of `HtmlNode`s into a flattened `Vec` representation.
+    ///
+    /// This function traverses a tree of `HtmlNode`s — starting from the given node (`tree`) —
+    /// and appends each node to the provided vector (`vec`). The children of each node are recursively processed
+    /// in depth-first order.
+    ///
+    /// # Parameters
+    /// - `tree`: A `Rc<RefCell<HtmlNode>>` representing the root node of the tree to traverse.
+    /// - `vec`: A mutable reference to a `Vec<Rc<RefCell<HtmlNode>>>` where the nodes will be collected.
+    ///
+    /// # Returns
+    /// A reference to the same `Vec<Rc<RefCell<HtmlNode>>>` that was passed as the second argument, now containing
+    /// all nodes from the tree in depth-first order.
+    ///
+    /// # Example
+    /// ```
+    /// use std::rc::Rc;
+    /// use std::cell::RefCell;
+    ///
+    /// // Assuming HtmlNode has a `children` field and supports Rc<RefCell<HtmlNode>>.
+    /// let root = Rc::new(RefCell::new(HtmlNode::new()));
+    /// let mut vec = Vec::new();
+    ///
+    /// // Populate the tree with child nodes...
+    ///
+    /// // Flatten the tree into a vector.
+    /// YourStruct::tree_to_vec(root, &mut vec);
+    ///
+    /// // `vec` now contains all nodes in the tree, traversed in depth-first order.
+    /// ```
+    ///
+    /// # Notes
+    /// - This function expects `HtmlNode` to have a `children` field, which is assumed to be a `Vec<Rc<RefCell<HtmlNode>>>`.
+    /// - Cloning `Rc<RefCell<T>>` increases the reference count of the underlying object; ensure proper
+    ///   handling of reference management to avoid memory leaks.
+    pub(crate) fn tree_to_vec(tree: Rc<RefCell<HtmlNode>>, vec: &mut Vec<Rc<RefCell<HtmlNode>>>) -> &Vec<Rc<RefCell<HtmlNode>>> {
+        vec.push(tree.clone());
+        for child in tree.borrow().children.clone() {
+            Self::tree_to_vec(child, vec);
+        }
+
+        return vec;
+
+    }
 }
 
 /// A struct representing a tag.
