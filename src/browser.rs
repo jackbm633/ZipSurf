@@ -514,6 +514,7 @@ impl eframe::App for Browser {
     /// app.update(ctx, frame);
     /// ```
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+
         if self.draw_commands.is_empty() {
             match self.document.as_mut() {
                 None => { panic!("Browser document not initialized.") },
@@ -537,7 +538,9 @@ impl eframe::App for Browser {
             self.scroll_y += SCROLL_STEP;
         }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new().fill(Color32::WHITE))
+            .show(ctx, |ui| {
             let painter = ui.painter();
 
             for text in &self.draw_commands {
