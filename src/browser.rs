@@ -1,3 +1,39 @@
+//! ```
+//! Applies CSS styling rules to an HTML node and its descendants.
+//!
+//! This function traverses the structure of an HTML document, starting from the given node.
+//! It matches CSS selectors with elements, applies the corresponding styles, and resolves
+//! inline styles if defined in the `style` attribute of elements. The styles are stored in
+//! the `style` attribute of each `HtmlNode` object.
+//!
+//! # Parameters
+//! - `node`: An optional reference-counted pointer (`Rc`) to a mutable `HtmlNode`, which is
+//!           the starting point of the HTML tree where the styles will be applied. If `None`,
+//!           the function panics because the browser document is not properly initialized.
+//! - `rules`: A reference to a vector of tuples where each tuple consists of:
+//!   - A `Selector` object representing a CSS selector.
+//!   - A `HashMap` containing CSS property-value key-pairs to apply.
+//!
+//! # Behavior
+//! - The function uses the cascade principle to resolve conflicting styles based on selector specificity.
+//! - Inline styles (from the HTML element's `style` attribute) take the highest precedence.
+//! - Inherited properties (defined in the `INHERITED_PROPERTIES` constant) are passed down to descendant elements.
+//!
+//! # Panics
+//! - The function panics if `node` is `None` when styling is attempted.
+//!
+//! # Example
+//! ```rust
+//! // Example usage:
+//! let html_tree = HtmlNode::new_element("div".to_string());
+//! let rules = vec![
+//!     (Selector::new(".test".to_string()), HashMap::from([
+//!         ("color".to_string(), "red".to_string())
+//!     ]))
+//! ];
+//! Browser::style(Some(Rc::new(RefCell::new(html_tree))), &rules);
+//! ```
+//! fn
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -40,7 +76,16 @@ use crate::selector::Selector;
 /// - Changes to the referenced file will require recompilation to reflect updates in the binary.
 lazy_static! {
     static ref DEFAULT_STYLE_SHEET: Vec<(Selector, HashMap<String, String>)> = CssParser::new(include_str!("../assets/browser.css")).parse().unwrap();
+
+    static ref INHERITED_PROPERTIES: HashMap<&'static str, &'static str> = HashMap::from([
+        ("color", "black"),
+        ("font-size", "16px"),
+        ("font-weight", "normal"),
+        ("font-style", "normal"),
+    ]);
 }
+
+
 /// The primary state controller for the web browser engine.
 ///
 /// This struct manages the lifecycle of web content from initial URL fetching
@@ -175,7 +220,7 @@ impl Browser {
             }
         }
     }
-    
+
     fn cascade_priority(rule: &(Selector, HashMap<String, String>)) -> i32 {
         return rule.0.priority();
     }
@@ -240,15 +285,33 @@ impl Browser {
         let nd = node.expect("Browser document not initialized.");
 
         let mut css_style_maps = Vec::new();
+        let mut inherited_style_map = HashMap::<String, String>::new();
+        for item in INHERITED_PROPERTIES.iter() {
+            match nd.borrow().parent {
+                None => {
+                    inherited_style_map.insert(item.0.to_string(), item.1.to_string());
+                }
+                Some(ref pt) => {
+                    inherited_style_map.insert(item.0.parse().unwrap(), pt.borrow().style.get(&item.0.to_string()).unwrap().to_string());
+                    
+                }
+            }
+        }
+        css_style_maps.push(inherited_style_map);
+
         for (selector, style_map) in rules {
             if selector.matches(nd.clone()) {
-                css_style_maps.push(style_map);
+                css_style_maps.push(style_map.clone());
             }
         }
 
+
+        
         // Encapsulate the mutation in a block to drop the borrow_mut() before recursion
         let children = {
             let mut node_ref = nd.borrow_mut();
+
+            
 
             let inline_style_attr = if let HtmlNodeType::Element(el)
                 = &node_ref.node_type {
