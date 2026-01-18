@@ -135,6 +135,7 @@ impl Browser {
                 };
 
                 self.nodes =  Some(parser.parse());
+                let mut rules = DEFAULT_STYLE_SHEET.clone();
 
                 let links =
                     HtmlNode::tree_to_vec(self.nodes.clone().unwrap(), &mut vec![])
@@ -148,7 +149,23 @@ impl Browser {
                         }
                         HtmlNodeType::Text(_) => {None}
                     }).collect::<Vec<String>>();
-                Self::style(Some(self.nodes.clone().unwrap()), &DEFAULT_STYLE_SHEET);
+
+                for link in links {
+                    let style_url = url.resolve(link.clone().as_mut_str());
+                    match style_url {
+                        Ok(st) => {
+                            let body = st.request();
+                            match body {
+                                Ok(bd) => {
+                                    rules.append(&mut CssParser::new(&*bd).parse().unwrap_or(vec![]));
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                        Err(_) => {}
+                    }
+                }
+                Self::style(Some(self.nodes.clone().unwrap()), &rules);
                 self.document = Some(LayoutNode::new_document(self.nodes.clone().unwrap()));
             }
             Err(e) => {
