@@ -165,6 +165,8 @@ impl Browser {
                         Err(_) => {}
                     }
                 }
+                rules.sort_by(|a, b|
+                    Self::cascade_priority(a).cmp(&Self::cascade_priority(b)));
                 Self::style(Some(self.nodes.clone().unwrap()), &rules);
                 self.document = Some(LayoutNode::new_document(self.nodes.clone().unwrap()));
             }
@@ -172,6 +174,10 @@ impl Browser {
                 eprintln!("Error loading URL: {}", e);
             }
         }
+    }
+    
+    fn cascade_priority(rule: &(Selector, HashMap<String, String>)) -> i32 {
+        return rule.0.priority();
     }
 
     /// Applies CSS styling rules to an HTML node and its descendants.

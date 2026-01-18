@@ -138,4 +138,38 @@ impl Selector {
             }
         }
     }
+    
+    /// Computes the priority of the current `SelectorType`.
+    ///
+    /// # Returns
+    /// * An `i32` representing the priority of the selector:
+    ///   - If the selector is of type `Tag`, it returns a fixed priority of `1`.
+    ///   - If the selector is of type `Descendant`, it recursively computes the priority
+    ///     by summing the priorities of its `ancestor` and `descendant` selectors.
+    ///
+    /// # Behavior
+    /// This function matches the `SelectorType` of the current instance:
+    /// - For `SelectorType::Tag`, a fixed priority of `1` is assigned.
+    /// - For `SelectorType::Descendant`, the priority is calculated based on the priorities
+    ///   of the `ancestor` and `descendant` selectors.
+    ///
+    /// # Examples
+    /// ```rust
+    /// let tag_selector = Selector::new(SelectorType::Tag { name: "div".to_string() });
+    /// assert_eq!(tag_selector.priority(), 1);
+    ///
+    /// let descendant_selector = Selector::new(SelectorType::Descendant {
+    ///     ancestor: Box::new(tag_selector),
+    ///     descendant: Box::new(Selector::new(SelectorType::Tag { name: "span".to_string() })),
+    /// });
+    /// assert_eq!(descendant_selector.priority(), 2); // 1 (ancestor) + 1 (descendant)
+    /// ```
+    pub(crate) fn priority(&self) -> i32 {
+        match &self.selector {
+            SelectorType::Tag { .. } => {1}
+            SelectorType::Descendant { ancestor, descendant } => {
+                ancestor.priority() + descendant.priority()
+            }
+        }
+    }
 }
