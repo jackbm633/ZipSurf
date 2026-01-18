@@ -37,6 +37,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::str::FromStr;
 use crate::layout::{LayoutNode, HEIGHT, VSTEP};
 use crate::node::{HtmlNodeType, HtmlNode};
 use crate::url::Url;
@@ -293,7 +294,7 @@ impl Browser {
                 }
                 Some(ref pt) => {
                     inherited_style_map.insert(item.0.parse().unwrap(), pt.borrow().style.get(&item.0.to_string()).unwrap().to_string());
-                    
+
                 }
             }
         }
@@ -338,6 +339,19 @@ impl Browser {
             node_ref.children.clone()
         };
 
+
+        if nd.borrow_mut().style.get("font-size").unwrap().ends_with("%") {
+            let mut node_ref = nd.borrow_mut();
+            let parent_font_size = match &node_ref.parent
+            {
+                None => {INHERITED_PROPERTIES.get("font-size").unwrap().to_string()}
+                Some(pt) => {pt.borrow().style.get("font-size").unwrap().to_string()}
+            };
+
+            let node_pct = f32::from_str(&node_ref.style.get("font-size").unwrap().replace("%", "")).unwrap() / 100.0;
+            let parent_x = parent_font_size.replace("px", "").parse::<f32>().unwrap();
+            node_ref.style.insert("font-size".to_string(), format!("{}px", parent_x * node_pct));
+        }
 
         // 3. Recursive phase - the borrow on 'nd' is now released
         for child in children {
