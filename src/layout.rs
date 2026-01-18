@@ -4,7 +4,7 @@ use std::rc::Rc;
 use crate::browser::{DrawCommand, DrawRect, DrawText};
 use crate::node::{HtmlNode, HtmlNodeType};
 use eframe::epaint::{Color32, FontFamily, FontId};
-use egui::{Context, Vec2};
+use egui::{Context, TextBuffer, Vec2};
 use std::sync::Arc;
 use crate::layout::LayoutMode::{Block, Inline};
 
@@ -705,22 +705,6 @@ impl<'a> BlockComposer<'a> {
     ///
     fn open_tag(&mut self, tag: String) {
         match tag.as_str() {
-            "i" => {
-                self.layout.font_style = "italic".into();
-                self.update_font()
-            },
-            "b" => {
-                self.layout.font_weight = "bold".into();
-                self.update_font()
-            },
-            "big" => {
-                self.layout.font_size += 16.0/3.0;
-                self.update_font()
-            },
-            "small" => {
-                self.layout.font_size -= 8.0/3.0;
-                self.update_font()
-            },
             "br" => {
                 self.flush_line();
             }
@@ -765,22 +749,6 @@ impl<'a> BlockComposer<'a> {
     /// - `VSTEP` is assumed to be a predefined constant controlling the vertical spacing between lines.
     fn close_tag(&mut self, tag: String) {
         match tag.as_str() {
-            "i" => {
-                self.layout.font_style = "".into();
-                self.update_font()
-            },
-            "b" => {
-                self.layout.font_weight = "".into();
-                self.update_font()
-            },
-            "big" => {
-                self.layout.font_size -= 16.0/3.0;
-                self.update_font()
-            },
-            "small" => {
-                self.layout.font_size += 8.0/3.0;
-                self.update_font()
-            },
             "p" => {
                 self.flush_line();
                 self.layout.cursor_y += VSTEP;
@@ -813,9 +781,31 @@ impl<'a> BlockComposer<'a> {
     /// ```
     /// some_layout.word("example");
     /// ```
-    fn word(&mut self, word: &str) {
+    fn word(&mut self, word: &str, node: Rc<RefCell<HtmlNode>>) {
+        let weight = node.borrow().style.get("font-weight").unwrap_or(&"normal".to_string()).clone();
+        match weight.as_str() {
+            "bold" => self.layout.font_weight = "bold".into(),
+            _ => self.layout.font_weight = "".into(),
+        }
+
+        let style = node.borrow().style.get("font-style").unwrap_or(&"normal".to_string()).clone();
+        match style.as_str() {
+            "italic" => self.layout.font_style = "italic".into(),
+            _ => self.layout.font_style = "".into(),
+        };
+
+        let size = node.borrow().style.get("font-size").unwrap_or(&"16px".to_string()).clone().replace("px", "").parse::<f32>().unwrap();
+        self.layout.font_size = size;
+        println!("{:?}", node.borrow().style);
+        self.update_font();
+        let color_parse = csscolorparser::parse(node.borrow().style.get("color").unwrap().as_str());
+        let color = Color32::from_hex(
+            &*color_parse.unwrap().to_css_hex()).unwrap();
+
+
+
         let galley = self.layout.context.fonts_mut(|f|
-            f.layout_no_wrap(word.to_string(), self.layout.font_id.clone(), Color32::BLACK));
+            f.layout_no_wrap(word.to_string(), self.layout.font_id.clone(), color));
 
         let text_width = galley.size().x;
 
@@ -984,7 +974,7 @@ impl<'a> BlockComposer<'a> {
             }
             Action::ProcessText(text) => {
                 for word in text.split_whitespace() {
-                    self.word(word);
+                    self.word(word, tree.clone());
                 }
             }
         }
