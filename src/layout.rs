@@ -796,7 +796,6 @@ impl<'a> BlockComposer<'a> {
 
         let size = node.borrow().style.get("font-size").unwrap_or(&"16px".to_string()).clone().replace("px", "").parse::<f32>().unwrap();
         self.layout.font_size = size;
-        println!("{:?}", node.borrow().style);
         self.update_font();
         let color_parse = csscolorparser::parse(node.borrow().style.get("color").unwrap().as_str());
         let color = Color32::from_hex(
