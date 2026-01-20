@@ -555,36 +555,41 @@ enum LayoutMode {
     Block
 }
 
-/// Represents the type of a layout node in a rendering or document processing system.
-///
-/// This enum is used to differentiate between various kinds of layout nodes:
-///
-/// - `Block`: Represents a block-level layout node, encapsulating its specific layout structure (`BlockLayout`).
-/// - `Document`: Represents the root-level node, typically the entire document structure.
-///
-/// # Variants
-///
-/// * `Block(BlockLayout)`
-///   - A block-level layout node, containing a `BlockLayout` structure that defines
-///     specific properties and behaviors for this block layout.
-/// * `Document`
-///   - The root layout node, representing the overall document in the layout tree.
-///
-/// # Example
 /// ```rust
-/// use crate::LayoutNodeType;
-/// use crate::BlockLayout; // assume BlockLayout is imported.
+/// Represents the types of nodes in a layout tree.
 ///
-/// let block_layout = BlockLayout { /* properties */ };
-/// let block_node = LayoutNodeType::Block(block_layout);
+/// This enum is used to differentiate between different types of layout nodes
+/// that can exist in a document's layout structure. Each variant corresponds
+/// to a specific type of layout node.
 ///
-/// let document_node = LayoutNodeType::Document;
+/// Variants:
+///
+/// - `Document`:
+///   Represents the root of the layout tree, typically corresponding to the
+///   entire document or container. This is the top-most level of a layout
+///   structure.
+///
+/// - `Block(BlockLayout)`:
+///   Represents a block-level container, such as a paragraph or a division.
+///   It contains a `BlockLayout` that holds additional layout information
+///   specific to block-level elements.
+///
+/// - `Line(LineLayout)`:
+///   Represents a line-level layout element within a block. It contains a
+///   `LineLayout` that encapsulates the attributes and structure of a
+///   particular line in the layout.
+///
+/// - `Text(TextLayout)`:
+///   Represents a text fragment or inline-level content within a line. It
+///   contains a `TextLayout` that describes the layout details of the text,
+///   such as its style, size, and content.
 /// ```
-///
-/// This enum can be further extended or customized to accommodate additional layout types in the system.
-enum LayoutNodeType {
+#[derive(Debug)]
+pub enum LayoutNodeType {
+    Document,
     Block(BlockLayout),
-    Document
+    Line(LineLayout),
+    Text(TextLayout),
 }
 
 impl std::fmt::Debug for LayoutNodeType {
