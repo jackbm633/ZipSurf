@@ -42,7 +42,7 @@ use crate::layout::{LayoutNode, HEIGHT, VSTEP};
 use crate::node::{HtmlNodeType, HtmlNode};
 use crate::url::Url;
 use eframe::egui;
-use egui::{Color32, Galley, Pos2, Rect, Stroke};
+use egui::{Color32, Galley, Pos2, Rect, Stroke, Vec2};
 use std::sync::Arc;
 use eframe::epaint::StrokeKind;
 use lazy_static::lazy_static;
@@ -521,7 +521,7 @@ impl eframe::App for Browser {
                 Some(doc) => {
                     LayoutNode::layout(doc.clone(), ctx.clone());
                     self.draw_commands = vec![];
-                    LayoutNode::paint_tree(doc.clone(), &mut self.draw_commands);
+                    LayoutNode::paint_tree(doc.clone(), &mut self.draw_commands, Vec2::ZERO);
 
                 }
             }

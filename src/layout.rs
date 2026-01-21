@@ -4,7 +4,7 @@ use std::rc::Rc;
 use crate::browser::{DrawCommand, DrawRect, DrawText};
 use crate::node::{HtmlNode, HtmlNodeType};
 use eframe::epaint::{Color32, FontFamily, FontId};
-use egui::{Context, TextBuffer, Vec2};
+use egui::{Context, Galley, TextBuffer, Vec2};
 use std::sync::Arc;
 use crate::layout::LayoutMode::{Block, Inline};
 
@@ -108,49 +108,137 @@ impl LayoutNode {
         }))
     }
 
-    /// Creates a new `LayoutNode` of type `Block` with default styling and layout attributes.
+    /// ```rust
+    /// Creates a new `LayoutNode` representing a line, which is a child of the specified parent node.
     ///
-    /// # Arguments
+    /// # Parameters
+    /// - `parent`: A `Rc<RefCell<LayoutNode>>` representing the parent layout node.
+    ///             This parent node is typically a block-level layout node.
     ///
-    /// * `node` - A reference-counted and mutable `HtmlNode` associated with this layout node.
-    /// * `parent` - An `Option` encapsulating a reference-counted and mutable parent `LayoutNode`.
-    ///              Specifies the parent layout node in the layout tree hierarchy, or `None` if it is the root.
-    /// * `previous` - An `Option` encapsulating a reference-counted and mutable previous sibling `LayoutNode`.
-    ///                Specifies the layout node that comes directly before this node in the layout tree structure,
-    ///                or `None` if it is the first child.
-    /// * `context` - A `Context` object that represents the environment or settings to be carried over for
-    ///               this layout node (e.g., shared properties, rendering context).
+    /// # Returns
+    /// - A `Rc<RefCell<LayoutNode>>` representing the newly created line layout node.
+    ///
+    /// # Details
+    /// This function initializes a new `LayoutNode` with the following properties:
+    /// - Inherits the HTML node of the parent block (`parent.borrow().node.clone()`).
+    /// - Sets its `parent` field to the provided parent node.
+    /// - Initializes an empty list of `children`.
+    /// - Sets the `previous` field to `None`, with the potential to add sibling line logic in the future.
+    /// - Configures the `content` field using the `LineLayout` type, with `max_ascent` and `max_descent`
+    ///   initialized to `0.0`.
+    /// - Creates an empty `display_list` for rendering purposes.
+    /// - Sets the `position` field to `Vec2::ZERO`, representing the line's relative position within the block.
+    /// - Sets the `size` field to `Vec2::ZERO`, which can later be adjusted to represent correct layout dimensions.
+    ///
+    /// # Examples
+    /// ```
+    /// let parent = Rc::new(RefCell::new(LayoutNode::new_block(...)));
+    /// let new_line_node = LayoutNode::new_line(parent);
+    /// // The new_line_node is now ready to be added to the parent's list of children.
+    /// ```
+    /// ```
+    pub fn new_line(node: Rc<RefCell<HtmlNode>>, parent: Rc<RefCell<LayoutNode>>) -> Rc<RefCell<LayoutNode>> {
+        Rc::new(RefCell::new(Self {
+            node, // Use the passed HTML node
+            parent: Some(parent),
+            children: Vec::new(),
+            previous: None,
+            content: LayoutNodeType::Line(LineLayout { max_ascent: 0.0, max_descent: 0.0 }),
+            display_list: Rc::new(RefCell::new(Vec::new())),
+            position: Some(Vec2::ZERO),
+            size: Some(Vec2::ZERO),
+        }))
+    }
+
+    /// ```rust
+    /// Creates a new `LayoutNode` instance to represent a textual element within a layout hierarchy.
+    ///
+    /// This function initializes the `LayoutNode` with the provided parent node, text layout,
+    /// and size. The created node is wrapped in both `Rc` (to allow multiple ownership)
+    /// and `RefCell` (to enable interior mutability).
+    ///
+    /// # Parameters
+    ///
+    /// - `parent`: A reference-counted and mutable reference (`Rc<RefCell<LayoutNode>>`)
+    ///   to the parent `LayoutNode` of the newly created text node. It represents the
+    ///   hierarchical relationship between nodes.
+    /// - `text_layout`: A `TextLayout` instance that defines the visual and structural
+    ///   representation of the text (e.g., font, style, alignment).
+    /// - `size`: A `Vec2` struct specifying the dimensions of the text node (width and height).
     ///
     /// # Returns
     ///
-    /// A reference-counted and mutable `LayoutNode` (`Rc<RefCell<LayoutNode>>`) with the following attributes:
-    /// - Contains no children initially (`children` is empty).
-    /// - Configures the node's content type as `LayoutNodeType::Block`, which holds styling information, such as:
-    ///     * `font_family`: Defaults to `"sans"`.
-    ///     * `font_weight`, `font_style`: Empty strings (default values).
-    ///     * `font_size`: Defaults to `16.0`.
-    ///     * `context`: Cloned from the given `context`.
-    ///     * `cursor_y`, `cursor_x`: Default offsets (`VSTEP` and `HSTEP` respectively) for layout starting positions.
-    ///     * `line`: Initialized empty (`Vec::new()`).
-    ///     * `font_id`: Defaults to `FontId::default()`.
-    ///     * `space_width`: Defaults to `0.0`.
-    ///     * `display_list`: An empty display list (`vec![]`) for rendering content.
-    /// - Takes a `parent` and `previous` node if provided.
-    /// - Initializes its own `display_list` as an empty, reference-counted mutable vector.
+    /// An `Rc<RefCell<LayoutNode>>` representing the newly created text node. This node
+    /// is configured with the following properties:
+    /// - References the `LayoutNode` of the parent node.
+    /// - No children (an empty vector).
+    /// - No previous sibling.
+    /// - `content` set to `LayoutNodeType::Text` with the provided `text_layout`.
+    /// - An empty display list, ready to be populated during rendering.
+    /// - Starting position as `Vec2::ZERO`, relative to a line.
+    /// - Specific size provided by the `size` parameter.
     ///
     /// # Example
     ///
     /// ```rust
-    /// let html_node = Rc::new(RefCell::new(HtmlNode::new()));
-    /// let parent_node = Rc::new(RefCell::new(LayoutNode::new()));
-    /// let context = Context::new();
+    /// use std::rc::Rc;
+    /// use std::cell::RefCell;
     ///
-    /// let layout_node = LayoutNode::new_block(
-    ///     html_node,
-    ///     Some(parent_node),
-    ///     None,
-    ///     context
-    /// );
+    /// // Assuming `LayoutNode`, `TextLayout`, and `Vec2` structs are defined:
+    /// let parent_node = Rc::new(RefCell::new(LayoutNode::new_root()));
+    /// let text_layout = TextLayout::new("Hello, world!", font, size);
+    /// let text_node_size = Vec2::new(200.0, 50.0);
+    ///
+    /// let text_node = LayoutNode::new_text(parent_node.clone(), text_layout, text_node_size);
+    ///
+    /// // The `text_node` can now be used as part of the layout tree.
+    /// ```
+    ///
+    /// Note: The caller is responsible for managing memory and ensuring
+    /// that the parent node and text node are part of a consistent layout hierarchy.
+    /// ```
+    /// Changed: Now takes `node` explicitly
+    pub fn new_text(node: Rc<RefCell<HtmlNode>>, parent: Rc<RefCell<LayoutNode>>, text_layout: TextLayout, size: Vec2) -> Rc<RefCell<LayoutNode>> {
+        Rc::new(RefCell::new(Self {
+            node, // Use the passed HTML node
+            parent: Some(parent),
+            children: Vec::new(),
+            previous: None,
+            content: LayoutNodeType::Text(text_layout),
+            display_list: Rc::new(RefCell::new(Vec::new())),
+            position: Some(Vec2::ZERO),
+            size: Some(size),
+        }))
+    }
+
+    /// Creates a new `LayoutNode` of type `Block` with the given parameters.
+    ///
+    /// # Parameters
+    /// - `node`: An `Rc<RefCell<HtmlNode>>` representing the HTML node associated with this layout node.
+    /// - `parent`: An optional `Rc<RefCell<LayoutNode>>` representing the parent layout node, or `None` if this is a root layout node.
+    /// - `previous`: An optional `Rc<RefCell<LayoutNode>>` representing the previous sibling layout node, or `None` if there is no previous sibling.
+    /// - `context`: A `Context` struct containing necessary information such as styling, configuration, or environment details for layout computations.
+    ///
+    /// # Returns
+    /// Returns an `Rc<RefCell<LayoutNode>>` representing the newly created layout node.
+    ///
+    /// # LayoutNode Details
+    /// - This function specifically initializes a node of type `Block`, making it suitable for block-level content.
+    /// - The `BlockLayout` contains default font properties:
+    ///   - `font_family`: Set to `"sans"`.
+    ///   - `font_weight`, `font_style`: Set to empty strings.
+    ///   - `font_size`: Set to `16.0`.
+    /// - A default `FontId` is assigned, and `space_width` is initialized to `0.0`.
+    /// - The `cursor_x` and `cursor_y` fields are initialized to `0.0`.
+    /// - The `display_list` is initialized as an empty vector wrapped in an `Rc<RefCell<_>>`, allowing for dynamic updates to the graphical representation.
+    ///
+    /// # Usage
+    /// This function is intended to construct layout nodes in a UI rendering engine or similar system, where each layout node can represent a piece of the rendered structure.
+    ///
+    /// ```rust
+    /// let html_node = Rc::new(RefCell::new(HtmlNode::new("div")));
+    /// let context = Context::default();
+    /// let layout_node = LayoutNode::new_block(html_node, None, None, context);
     /// ```
     pub fn new_block(node: Rc<RefCell<HtmlNode>>,
                      parent: Option<Rc<RefCell<LayoutNode>>>,
@@ -169,10 +257,8 @@ impl LayoutNode {
                     context: context.clone(),
                     cursor_y: 0.0,
                     cursor_x: 0.0,
-                    line: Vec::new(),
                     font_id: FontId::default(),
                     space_width: 0.0,
-                    display_list: vec![],
                 }
             ),
             previous,
@@ -272,6 +358,7 @@ impl LayoutNode {
                     }
                 }
                 Inline => {
+                    let outer_node_ptr = node.clone();
                     // Re-borrow mutably only for the block work
                     let mut node_borrow = node.borrow_mut();
 
@@ -280,15 +367,22 @@ impl LayoutNode {
                         ref mut content,
                         ref mut position,
                         ref mut size,
-                        ref mut display_list,
+                        ref node,
+                        ref mut children,
                         ..
                     } = *node_borrow;
 
                     if let LayoutNodeType::Block(block_layout) = content {
+
+                        // 3. Create Composer with the split references
                         let mut composer = BlockComposer {
                             layout: block_layout,
+                            children: children, // Pass the Vec<Rc> directly
+                            parent_ptr: outer_node_ptr.clone(), // Pass the Rc<RefCell> (the original `node` variable) for parentage
+                            block_html_node: node.clone(),      // Pass the HTML node Rc
                             outer_position: position,
-                            outer_size: size
+                            outer_size: size,
+                            current_line_nodes: Vec::new(),
                         };
 
                         composer.update_font();
@@ -405,52 +499,57 @@ impl LayoutNode {
     /// # Output Format
     /// The result is a list of drawing commands that downstream subsystems or renderers can consume
     /// to render the element onto a display or canvas.
-    pub fn paint(&self) -> Vec<DrawCommand>{
+    pub fn paint(&self, offset: Vec2) -> Vec<DrawCommand> {
+        let mut cmds = Vec::<DrawCommand>::new();
+
         match &self.content {
-            LayoutNodeType::Document => {vec![]},
-            LayoutNodeType::Block(blk) => {
-                let mut cmds = Vec::<DrawCommand>::new();
+            LayoutNodeType::Document => {},
 
-                match &self.node.borrow().node_type {
-                    HtmlNodeType::Element(_ele) => {
-                        let bgcolor = self.node.borrow().style.get("background-color")
-                            .unwrap_or(&"transparent".to_string()).clone();
+            LayoutNodeType::Block(_blk) => {
+                if let HtmlNodeType::Element(_ele) = &self.node.borrow().node_type {
+                    let bgcolor = self.node.borrow().style.get("background-color")
+                        .unwrap_or(&"transparent".to_string()).clone();
 
-                        let color_parse = csscolorparser::parse(&*bgcolor);
-                        let color = Color32::from_hex(
-                            &*color_parse.unwrap().to_css_hex()).unwrap();
+                    if let Ok(color_parse) = csscolorparser::parse(&bgcolor) {
+                        if let Ok(color) = Color32::from_hex(&color_parse.to_css_hex()) {
+                            if color.a() > 0 {
+                                // Blocks are absolute, so we ignore 'offset' for the rect position
+                                // and just use self.position.
+                                let pos = self.position.unwrap_or(Vec2::ZERO);
+                                let size = self.size.unwrap_or(Vec2::ZERO);
 
-                        if (color.a() > 0) {
-                            let rect = DrawCommand::DrawRect(DrawRect {
-                                top_left: self.position.unwrap().to_pos2(),
-                                bottom_right: (self.position.unwrap() + self.size.unwrap()).to_pos2(),
-                                color,
-                            });
-                            cmds.push(rect);
-                        }
-
-
-
-                    }
-                    HtmlNodeType::Text(_) => {}
-                }
-                
-                match Self::layout_mode(self.node.clone())
-                {
-                    Inline => {
-                        for text in &blk.display_list {
-                            cmds.push(DrawCommand::DrawText(text.clone()))
+                                cmds.push(DrawCommand::DrawRect(DrawRect {
+                                    top_left: pos.to_pos2(),
+                                    bottom_right: (pos + size).to_pos2(),
+                                    color,
+                                }));
+                            }
                         }
                     }
-                    Block => {}
                 }
+            },
 
+            LayoutNodeType::Line(_) => {
+                // Lines are usually invisible containers, but if you wanted to draw
+                // a border or debug box, you would use: offset + self.position
+            },
 
+            LayoutNodeType::Text(text_layout) => {
+                // Text is relative. We must add the accumulated offset.
+                // 'offset' passed here is (Block Abs Pos + Line Rel Pos).
+                // We add self.position (Text Rel Pos) to get final screen coordinates.
+                let final_pos =  self.position.unwrap_or(Vec2::ZERO);
 
-                cmds
+                cmds.push(DrawCommand::DrawText(DrawText {
+                    x: final_pos.x,
+                    y: final_pos.y,
+                    galley: text_layout.galley.clone(),
+                }));
             }
         }
+        cmds
     }
+
 
     /// Recursively traverses the layout tree and populates the display list with draw commands.
     ///
@@ -486,12 +585,29 @@ impl LayoutNode {
     /// let mut display_list: Vec<DrawText> = Vec::new();
     /// paint_tree(root_node, &mut display_list);
     /// ```
-    pub fn paint_tree(node: Rc<RefCell<LayoutNode>>, mut display_list: &mut Vec<DrawCommand>)  {
-        display_list.append(&mut node.borrow().paint());
+    pub fn paint_tree(node: Rc<RefCell<LayoutNode>>, display_list: &mut Vec<DrawCommand>, accumulated_offset: Vec2) {
+        // 1. Ask the node to paint itself at the given offset
+        display_list.append(&mut node.borrow().paint(accumulated_offset));
 
-        for child in node.borrow().children.clone()
-        {
-            Self::paint_tree(child.clone(), &mut display_list);
+        // 2. Calculate the offset for the children
+        let node_borrow = node.borrow();
+
+        // CRITICAL: Determine coordinate space
+        // Blocks in your system currently store ABSOLUTE positions.
+        // Lines and Text store RELATIVE positions.
+        let child_offset = match node_borrow.content {
+            // If this is a Block, its 'position' is absolute.
+            // We reset the accumulator to this block's position for its children (Lines).
+            LayoutNodeType::Block(_) => node_borrow.position.unwrap_or(Vec2::ZERO),
+
+            // If this is a Line or Text, its position is relative.
+            // We add its position to the incoming accumulator.
+            _ => accumulated_offset + node_borrow.position.unwrap_or(Vec2::ZERO),
+        };
+
+        // 3. Recurse
+        for child in &node_borrow.children {
+            Self::paint_tree(child.clone(), display_list, child_offset);
         }
     }
 
@@ -592,59 +708,99 @@ pub enum LayoutNodeType {
     Text(TextLayout),
 }
 
-impl std::fmt::Debug for LayoutNodeType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LayoutNodeType::Block(_) => write!(f, "Block"),
-            LayoutNodeType::Document => write!(f, "Document"),
-        }
-    }
-}
-
-/// Represents the layout and formatting attributes for text blocks.
-///
-/// The `BlockLayout` struct is utilized to manage and render text blocks
-/// within a graphical user interface or a similar context. It provides
-/// properties for font customization, cursor positioning, and the internal
-/// data required for drawing the text.
+/// ```rust
+/// Represents the layout metrics for a line of text,
+/// providing information about its vertical alignment.
 ///
 /// # Fields
 ///
-/// * `display_list` - A vector containing `DrawText` elements representing
-///   the individual pieces of text to be drawn on the display.
+/// * `max_ascent` - The maximum ascent value of the line.
+///   This represents the distance from the baseline to the highest point
+///   of any glyph in the line. A larger value indicates a taller ascent.
 ///
-/// * `font_family` - A string specifying the font family to be used for text
-///   rendering (e.g., "Arial", "Times New Roman").
+/// * `max_descent` - The maximum descent value of the line.
+///   This represents the distance from the baseline to the lowest point
+///   of any glyph in the line. A larger value indicates a deeper descent.
 ///
-/// * `font_weight` - A string indicating the weight (thickness) of the font
-///   (e.g., "normal", "bold").
+/// # Debug
 ///
-/// * `font_style` - A string defining the style of the font (e.g., "normal",
-///   "italic").
+/// This struct derives the `Debug` trait, allowing it to be
+/// formatted using the `{:?}` formatter for debugging purposes.
 ///
-/// * `font_size` - A floating-point number representing the size of the font
-///   in points.
+/// # Example
+/// ```
+/// let line_layout = LineLayout {
+///     max_ascent: 12.5,
+///     max_descent: 3.2,
+/// };
 ///
-/// * `cursor_x` - A floating-point value representing the current horizontal
-///   position of the cursor in the layout.
+/// println!("{:?}", line_layout);
+/// ```
+/// ```
+#[derive(Debug)]
+pub struct LineLayout {
+    pub max_ascent: f32,
+    pub max_descent: f32,
+}
+
+
+/// A structure representing a layout of text with associated styling and rendering information.
 ///
-/// * `cursor_y` - A floating-point value representing the current vertical
-///   position of the cursor in the layout.
+/// # Fields
 ///
-/// * `context` - A `Context` object containing the necessary information for
-///   managing and rendering the text block within its environment.
+/// * `galley` - An `Arc`-wrapped `Galley` instance that contains the text, its layout, and associated metadata.
+///   The `Galley` object manages the text layout, including line-breaking logic and glyph positioning.
 ///
-/// * `line` - A vector of `DrawText` elements that represent the text in the
-///   current line being processed or rendered.
+/// * `color` - A `Color32` value representing the color of the text. This determines how the text is rendered visually,
+///   typically defined in RGBA format with 8 bits per channel.
 ///
-/// * `font_id` - A `FontId` identifying the specific font being used from a
-///   font management system.
+/// # Derives
 ///
-/// * `space_width` - A floating-point value specifying the width of a space
-///   character, which can vary depending on the font and its settings.
+/// * `Debug` - Implements the Debug trait for easy formatting and debugging of the `TextLayout` structure.
+///
+/// # Example
+/// ```
+/// use std::sync::Arc;
+/// use some_crate::{TextLayout, Galley, Color32};
+///
+/// let galley = Arc::new(Galley::new("Hello, world!"));
+/// let text_color = Color32::from_rgba_unmultiplied(255, 255, 255, 255); // white
+/// let text_layout = TextLayout {
+///     galley,
+///     color: text_color,
+/// };
+///
+/// println!("{:?}", text_layout); // Prints the debug representation of the text layout
+/// ```
+#[derive(Debug)]
+pub struct TextLayout {
+    pub galley: Arc<Galley>,
+    pub color: Color32,
+}
+
+/// Represents the layout properties of a text block.
+///
+/// The `BlockLayout` struct encapsulates various attributes related to the graphical representation
+/// and rendering of a block of text, including font properties, cursor position, and additional
+/// context information.
+///
+/// # Fields
+///
+/// * `font_family` - A `String` representing the font family used for the text (e.g., "Arial").
+/// * `font_weight` - A `String` that specifies the weight of the font (e.g., "Bold", "Regular").
+/// * `font_style` - A `String` defining the style of the font (e.g., "Italic", "Normal").
+/// * `font_size` - A `f32` value that indicates the size of the font in points.
+/// * `cursor_x` - A `f32` representing the X-coordinate of the cursor in the block's layout.
+/// * `cursor_y` - A `f32` representing the Y-coordinate of the cursor in the block's layout.
+/// * `context` - A `Context`, which holds additional information or settings relevant to the layout.
+/// * `font_id` - A `FontId`, identifying the font used in the block layout.
+/// * `space_width` - A `f32` value representing the width of a single space character, useful
+///   for alignment and spacing calculations.
+///
+/// This struct is derived from the `Debug` trait, which allows for formatted output using the
+/// `{:?}` formatter.
 #[derive(Debug)]
 pub struct BlockLayout {
-    pub(crate) display_list: Vec<DrawText>,
     font_family: String,
     font_weight: String,
     font_style: String,
@@ -652,49 +808,54 @@ pub struct BlockLayout {
     cursor_x: f32,
     cursor_y: f32,
     context: Context,
-    line: Vec<DrawText>,
     font_id: FontId,
     space_width: f32,
 }
 
-/// A struct that assists in composing and configuring block layouts.
+/// ```rust
+/// Represents a helper struct used to compose and organize blocks in a layout system.
 ///
-/// The `BlockComposer` struct is designed to facilitate the layout configuration
-/// of a block by holding mutable references to the layout properties and their
-/// related attributes. It provides a mechanism for modifying these properties
-/// in a cohesive manner.
+/// The `BlockComposer` is primarily responsible for managing and manipulating the layout of
+/// blocks and their respective child nodes within a rendering or UI layout engine. It maintains
+/// references to the layout, block node, and temporary buffers required for efficiently
+/// handling lines and child nodes.
 ///
 /// # Type Parameters
-/// - `'a`: A lifetime parameter that ties the lifetime of borrowed data to the block composer.
+/// - `'a`: A lifetime bound that ties certain references in the struct to their owners,
+///         ensuring safety.
 ///
 /// # Fields
-/// - `layout`: A mutable reference to a `BlockLayout` object that defines the structure
-///   or arrangement of the block.
-/// - `outer_position`: A mutable reference to an `Option<Vec2>` that represents the
-///   outer position of the block. This can be used to specify or modify its position in
-///   a layout space.
-/// - `outer_size`: A mutable reference to an `Option<Vec2>` that represents the outer
-///   size of the block. This allows the overall dimensions of the block to be set or adjusted.
+/// * `layout`: A mutable reference to a `BlockLayout`.
+///   This represents the layout context for the current block, which includes layout-specific
+///   properties such as position and size.
 ///
-/// # Example
-/// ```rust
-/// // Example usage of the BlockComposer struct
-/// let mut layout = BlockLayout::new();
-/// let mut position = None;
-/// let mut size = None;
+/// * `block_node`: An `Rc<RefCell<LayoutNode>>` representing the block-level `LayoutNode`.
+///   This node acts as the parent to which child nodes (e.g., lines of text) will be added.
+///   The use of `Rc<RefCell<_>>` ensures shared ownership and interior mutability for the node.
 ///
-/// let mut composer = BlockComposer {
-///     layout: &mut layout,
-///     outer_position: &mut position,
-///     outer_size: &mut size,
-/// };
+/// * `outer_position`: A mutable reference to an optional `Vec2` representing the outer
+///   position of the block. If set, this determines the block's absolute position in the layout
+///   space.
 ///
-/// // The composer can now be used to modify the layout, position, and size.
+/// * `outer_size`: A mutable reference to an optional `Vec2` representing the size of the block.
+///   If set, this specifies the block's total dimensions, including padding or margins.
+///
+/// * `current_line_nodes`: A vector of `Rc<RefCell<LayoutNode>>` representing temporary storage
+///   for the text nodes belonging to the current line. This buffer facilitates efficient handling
+///   of nodes before they are finalized and incorporated into the layout structure.
 /// ```
 struct BlockComposer<'a> {
     layout: &'a mut BlockLayout,
+    // CHANGED: We access the parent's children list directly via split borrow
+    children: &'a mut Vec<Rc<RefCell<LayoutNode>>>,
+    // We keep the parent struct strictly for reference/parent pointers, not for borrowing data
+    parent_ptr: Rc<RefCell<LayoutNode>>,
+    // We need the block's HTML node to create Line nodes
+    block_html_node: Rc<RefCell<HtmlNode>>,
+
     outer_position: &'a mut Option<Vec2>,
     outer_size: &'a mut Option<Vec2>,
+    current_line_nodes: Vec<Rc<RefCell<LayoutNode>>>,
 }
 
 impl<'a> BlockComposer<'a> {
@@ -802,26 +963,41 @@ impl<'a> BlockComposer<'a> {
         let size = node.borrow().style.get("font-size").unwrap_or(&"16px".to_string()).clone().replace("px", "").parse::<f32>().unwrap();
         self.layout.font_size = size;
         self.update_font();
-        let color_parse = csscolorparser::parse(node.borrow().style.get("color").unwrap().as_str());
-        let color = Color32::from_hex(
-            &*color_parse.unwrap().to_css_hex()).unwrap();
-
+        let color_parse = csscolorparser::parse(node.borrow().style.get("color").unwrap_or(&"black".to_string()).as_str());
+        let color = Color32::from_hex(&*color_parse.unwrap().to_css_hex()).unwrap();
 
 
         let galley = self.layout.context.fonts_mut(|f|
             f.layout_no_wrap(word.to_string(), self.layout.font_id.clone(), color));
-
         let text_width = galley.size().x;
-
+        let text_height = galley.size().y;
+        // 3. Check for wrapping
         if self.layout.cursor_x + text_width > self.outer_size.unwrap().x {
             self.flush_line();
         }
 
-        self.layout.line.push(DrawText {
-            x: self.layout.cursor_x,
-            y: 0.0,
-            galley
-        });
+        // 4. Create the TextLayout struct
+        let text_content = TextLayout {
+            galley,
+            color,
+        };
+
+        // 5. Create the Text Node (Note: We don't have the Line parent yet,
+        // so we use block_node temporarily or handle parentage when creating the Line)
+        // For simplicity, we create the node now and will assign the correct parent in flush_line.
+        let text_node = LayoutNode::new_text(
+            node.clone(),
+            self.parent_ptr.clone(),
+            text_content,
+            Vec2::new(text_width, text_height)
+        );
+
+        // Set the relative X position immediately
+        text_node.borrow_mut().position = Some(Vec2::new(self.layout.cursor_x, 0.0));
+
+        // 6. Add to pending buffer
+        self.current_line_nodes.push(text_node);
+
         self.layout.cursor_x += text_width + self.layout.space_width;
     }
 
@@ -868,37 +1044,90 @@ impl<'a> BlockComposer<'a> {
     ///   rendering.
     /// - `self.outer_position`: An optional field for the layout's outer positioning.
     fn flush_line(&mut self) {
-        if self.layout.line.is_empty() {
-            return;
+        if self.current_line_nodes.is_empty() { return; }
+
+        // 1. Calculate Metrics
+        let mut max_ascent: f32 = 0.0;
+        let mut max_descent: f32 = 0.0;
+
+        for node in &self.current_line_nodes {
+            if let LayoutNodeType::Text(txt) = &node.borrow().content {
+                if let Some(row) = txt.galley.rows.first() {
+                    let ascent = row.row.glyphs.first().map(|g| g.font_ascent).unwrap_or(0.0);
+                    let height = row.row.glyphs.first().map(|g| g.font_height).unwrap_or(0.0);
+
+                    if ascent > max_ascent { max_ascent = ascent; }
+
+                    let descent = height - ascent;
+                    if descent > max_descent { max_descent = descent; }
+                }
+            }
         }
 
-        let galleys = self.layout.line.iter().map(|l| l.galley.clone());
-        let max_ascent = galleys.clone().map(|g| g.rows.first().unwrap()
-            .row.glyphs.first().unwrap().font_ascent).into_iter()
-            .reduce(f32::max)
-            .unwrap_or(0.);
-        let max_descent = galleys.map(|g| {
-            let glyph = g.rows.first().unwrap().row.glyphs.first().unwrap();
-            glyph.font_height - glyph.font_ascent
-        }).into_iter()
-            .reduce(f32::max)
-            .unwrap_or(0.);
+        let line_height = (max_ascent + max_descent) * 1.25;
+        let baseline_offset = max_ascent * 1.25;
 
-        let baseline = self.layout.cursor_y + 1.25 * max_ascent;
+        // 2. Get the Block's Absolute Position
+        // We assume self.outer_position is already absolute (set in layout())
+        let block_pos = self.outer_position.unwrap_or(Vec2::ZERO);
 
-        for text in &mut self.layout.line {
-            text.y = baseline - text.galley.rows.first().unwrap().row.glyphs.first().unwrap().font_ascent;
-            self.layout.display_list.push(DrawText {
-                x: text.x + self.outer_position.unwrap().x,
-                y: text.y + self.outer_position.unwrap().y,
-                galley: text.galley.clone()
-            })
+        // Calculate Line's Absolute Position
+        // X = Block X
+        // Y = Block Y + Current Cursor Y
+        let line_abs_pos = Vec2::new(block_pos.x, block_pos.y + self.layout.cursor_y);
+
+        // 3. Create Line Node with Absolute Position
+        let line_node = LayoutNode::new_line(
+            self.block_html_node.clone(),
+            self.parent_ptr.clone()
+        );
+
+        line_node.borrow_mut().position = Some(line_abs_pos);
+        line_node.borrow_mut().size = Some(Vec2::new(self.outer_size.unwrap().x, line_height));
+
+        if let LayoutNodeType::Line(l) = &mut line_node.borrow_mut().content {
+            l.max_ascent = max_ascent;
+            l.max_descent = max_descent;
         }
 
+        // 4. Update Children (Text Nodes) with Absolute Positions
+        for text_node in &self.current_line_nodes {
+            let mut txt = text_node.borrow_mut();
+
+            // Parent pointer update
+            txt.parent = Some(line_node.clone());
+
+            // Get the relative X we stored temporarily in word()
+            let relative_x = txt.position.unwrap().x;
+
+            // Calculate Text Ascent for alignment
+            let mut ascent = 0.0;
+            if let LayoutNodeType::Text(t) = &txt.content {
+                if let Some(row) = t.galley.rows.first() {
+                    ascent = row.row.glyphs.first().map(|g| g.font_ascent).unwrap_or(0.0);
+                }
+            }
+
+            // Calculate Final Absolute Position
+            // X = Block X + Word Relative X
+            // Y = Line Y + (Baseline Offset - Font Ascent)
+            let abs_x = block_pos.x + relative_x;
+            let abs_y = line_abs_pos.y + (baseline_offset - ascent);
+
+            txt.position = Some(Vec2::new(abs_x, abs_y));
+        }
+
+        // Move children into the line
+        line_node.borrow_mut().children = self.current_line_nodes.drain(..).collect();
+
+        // Add Line to Block
+        self.children.push(line_node);
+
+        // Advance Cursor
         self.layout.cursor_x = 0.0;
-        self.layout.cursor_y = baseline + 1.25 * max_descent;
-        self.layout.line.clear();
+        self.layout.cursor_y += line_height;
     }
+
 
     /// Recursively processes an HTML-like structure represented by a tree of `HtmlNode` objects.
     ///
