@@ -164,6 +164,11 @@ impl Browser {
         }
     }
 
+    fn click(&self, position: Pos2) {
+        let mut new_pos = position.clone();
+        new_pos.y += self.scroll_y;
+    }
+
     /// Fetches a web page, strips HTML tags, and stores the raw content.
     ///
     /// This triggers a blocking network request. Upon success, the response
@@ -538,6 +543,12 @@ impl eframe::App for Browser {
             self.scroll_y += SCROLL_STEP;
         }
 
+        if (ctx.input(|i| i.pointer.primary_clicked()))
+        {
+            let pos = ctx.input(|i| i.pointer.interact_pos()).unwrap();
+            self.click(pos);
+        }
+
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(Color32::WHITE))
             .show(ctx, |ui| {
@@ -570,6 +581,8 @@ impl eframe::App for Browser {
         });
     }
 }
+
+
 
 /// A structure that represents text rendering properties, including its content,
 /// position, and font details.
