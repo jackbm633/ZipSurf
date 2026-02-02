@@ -11,6 +11,7 @@ use native_tls::TlsConnector;
 ///
 /// This structure holds the individual components of a URL after it has been
 /// validated and parsed by the [`Url::new`] constructor.
+#[derive(Clone)]
 pub struct Url {
     /// The protocol used (currently limited to "http").
     pub scheme: String,

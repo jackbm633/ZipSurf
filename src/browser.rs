@@ -42,7 +42,7 @@ use crate::layout::{LayoutNode, HEIGHT, VSTEP};
 use crate::node::{HtmlNodeType, HtmlNode};
 use crate::url::Url;
 use eframe::egui;
-use egui::{Color32, Galley, Pos2, Rect, Stroke, Vec2};
+use egui::{Color32, Context, Galley, Pos2, Rect, Stroke, Vec2};
 use std::sync::Arc;
 use eframe::epaint::StrokeKind;
 use lazy_static::lazy_static;
@@ -50,31 +50,7 @@ use crate::css_parser::CssParser;
 use crate::html_parser::HtmlParser;
 use crate::selector::Selector;
 
-/// A constant that holds the default stylesheet for a browser application.
-///
-/// # Description
-/// The `DEFAULT_STYLE_SHEET` constant is a string literal that contains the
-/// contents of the "browser.css" stylesheet file located in the `../assets` directory.
-/// It is embedded into the binary at compile time using the `include_str!` macro.
-///
-/// # Usage
-/// This constant can be used as the initial or fallback stylesheet for a
-/// browser-like application to ensure a consistent default appearance.
-///
-/// # Example
-/// ```rust
-/// fn main() {
-///     println!("Default stylesheet: {}", DEFAULT_STYLE_SHEET);
-/// }
-/// ```
-///
-/// # File Location
-/// The "browser.css" file must exist in the specified relative path (`../assets`) at compile time.
-/// If the file is not found, the compilation will fail.
-///
-/// # Notes
-/// - Ensure that the "browser.css" file contains valid CSS content.
-/// - Changes to the referenced file will require recompilation to reflect updates in the binary.
+
 lazy_static! {
     static ref DEFAULT_STYLE_SHEET: Vec<(Selector, HashMap<String, String>)> = CssParser::new(include_str!("../assets/browser.css")).parse().unwrap();
 
@@ -112,16 +88,13 @@ pub struct Browser {
     /// # Usage
     /// - Maintain the sequential order of tokens for parsing tasks.
     /// - Perform operations like iteration, filtering, or mapping on the list of tokens.
-    tokens: Vec<HtmlNodeType>,
     draw_commands: Vec<DrawCommand>,
     /// The current vertical scroll offset in points.
     scroll_y: f32,
-    /// Handle to the egui context for font layout and UI state.
-    context: egui::Context,
-    /// The raw, sanitized text content extracted from the source HTML.
-    body: String,
     nodes: Option<Rc<RefCell<HtmlNode>>>,
-    document: Option<Rc<RefCell<LayoutNode>>>
+    document: Option<Rc<RefCell<LayoutNode>>>,
+    url: Option<Url>,
+    context: Context
 }
 
 
@@ -135,13 +108,12 @@ impl Default for Browser {
     /// overwritten during `new()` to ensure it points to the active UI context.
     fn default() -> Self {
         Browser {
-            tokens: Vec::new(),
             draw_commands: Vec::new(),
             scroll_y: 0.0,
-            context: egui::Context::default(),
-            body: String::new(),
             nodes: None,
-            document: None
+            document: None,
+            url: None,
+            context: egui::Context::default(),
         }
     }
 }
@@ -164,9 +136,37 @@ impl Browser {
         }
     }
 
-    fn click(&self, position: Pos2) {
+    fn click(&mut self, position: Pos2) {
         let mut new_pos = position.clone();
         new_pos.y += self.scroll_y;
+
+        let mut vec: Vec<Rc<RefCell<LayoutNode>>> = vec![];
+        let objs = LayoutNode::tree_to_vec(self.document.clone().unwrap(), &mut vec).iter().filter(
+            |l|
+                Rect::from_two_pos(l.borrow().position.unwrap().to_pos2(), (l.borrow().position.unwrap()
+                    + l.borrow().size.unwrap()).to_pos2()).contains(new_pos)
+        ).collect::<Vec<&Rc<RefCell<LayoutNode>>>>();
+        if objs.len() == 0 {
+            return;
+        }
+        let mut element = objs.last().map(|&e| e.borrow().node.clone());
+        while let Some(current_element) = element {
+            let node = current_element.borrow();
+            match &node.node_type
+            {
+                HtmlNodeType::Element(ele) => {
+                    if ele.tag == "a" && ele.attributes.contains_key("href")
+                    {
+                        let url = self.url.clone().unwrap()
+                            .resolve(ele.attributes.get("href").unwrap().clone().as_mut_str()).unwrap();
+                        self.load(url);
+                    }
+                }
+                HtmlNodeType::Text(_) => {}
+            }
+            element = current_element.borrow().parent.clone();
+        }
+
     }
 
     /// Fetches a web page, strips HTML tags, and stores the raw content.
@@ -178,6 +178,9 @@ impl Browser {
     /// # Errors
     /// Network failures or request timeouts are logged to `stderr`.
     pub fn load(&mut self, url: Url) {
+        self.url = Some(url.clone());
+        self.draw_commands.clear();
+        self.scroll_y = 0.0;
         match url.request() {
             Ok(body) => {
                 let mut parser = HtmlParser {
@@ -316,8 +319,6 @@ impl Browser {
         // Encapsulate the mutation in a block to drop the borrow_mut() before recursion
         let children = {
             let mut node_ref = nd.borrow_mut();
-
-            
 
             let inline_style_attr = if let HtmlNodeType::Element(el)
                 = &node_ref.node_type {
@@ -536,7 +537,7 @@ impl eframe::App for Browser {
             match &self.document {
                 None => { panic!("Browser document not initialized.") },
                 Some(doc) => {
-                    let max_y = doc.borrow().size.unwrap().y + 2.0*VSTEP - HEIGHT;
+                    let max_y = doc.borrow().size.unwrap_or(Vec2::ZERO).y + 2.0*VSTEP - HEIGHT;
                     self.scroll_y = (self.scroll_y + SCROLL_STEP).min(max_y);
                 }
             }

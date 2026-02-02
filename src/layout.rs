@@ -53,12 +53,12 @@ const BLOCK_ELEMENTS: [&str; 37] =  [
 ///                    drawing instructions (e.g., positioning and styles) for the graphical
 ///                    representation of the node.
 pub struct LayoutNode {
-    node: Rc<RefCell<HtmlNode>>,
-    parent: Option<Rc<RefCell<LayoutNode>>>,
+    pub(crate) node: Rc<RefCell<HtmlNode>>,
+    pub(crate) parent: Option<Rc<RefCell<LayoutNode>>>,
     children: Vec<Rc<RefCell<LayoutNode>>>,
     previous: Option<Rc<RefCell<LayoutNode>>>,
-    content: LayoutNodeType,
-    position: Option<Vec2>,
+    pub(crate) content: LayoutNodeType,
+    pub(crate) position: Option<Vec2>,
     pub(crate) size: Option<Vec2>,
     pub(crate) display_list: Rc<RefCell<Vec<DrawCommand>>>
 }
@@ -148,6 +148,16 @@ impl LayoutNode {
             position: Some(Vec2::ZERO),
             size: Some(Vec2::ZERO),
         }))
+    }
+
+    pub(crate) fn tree_to_vec(tree: Rc<RefCell<LayoutNode>>, vec: &mut Vec<Rc<RefCell<LayoutNode>>>) -> &Vec<Rc<RefCell<LayoutNode>>> {
+        vec.push(tree.clone());
+        for child in tree.borrow().children.clone() {
+            Self::tree_to_vec(child, vec);
+        }
+
+        return vec;
+
     }
 
     /// ```rust
