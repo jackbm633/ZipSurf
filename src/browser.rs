@@ -69,7 +69,7 @@ lazy_static! {
 /// through HTML sanitization and final 2D layout. It maintains a persistent
 /// reference to the `egui::Context` to perform font metric calculations and
 /// handles the application's scroll state.
-pub struct Browser {
+pub struct Tab {
     /// A collection of `Token` objects.
     ///
     /// This vector stores instances of the `Token` type, which represent
@@ -101,13 +101,13 @@ pub struct Browser {
 
 const SCROLL_STEP: f32 = 100.0;
 
-impl Default for Browser {
+impl Default for Tab {
     /// Returns a `Browser` instance with empty buffers and default scroll position.
     ///
     /// Note: The `context` is initialized with a default handle which should be
     /// overwritten during `new()` to ensure it points to the active UI context.
     fn default() -> Self {
-        Browser {
+        Tab {
             draw_commands: Vec::new(),
             scroll_y: 0.0,
             nodes: None,
@@ -118,7 +118,7 @@ impl Default for Browser {
     }
 }
 
-impl Browser {
+impl Tab {
     /// Initializes a new browser instance and configures the UI environment.
     ///
     /// Sets the global visual theme to light mode to ensure text contrast and
@@ -485,7 +485,7 @@ impl Browser {
     }
 }
 
-impl eframe::App for Browser {
+impl eframe::App for Tab {
     /// Updates the application state and renders the user interface.
     ///
     /// This function is invoked during every frame update loop. It handles user input, updates internal

@@ -23,7 +23,7 @@ fn main() -> eframe::Result<(), eframe::Error> {
         "ZipSurf Browser",
         window_options,
         Box::new(|cc| {
-            let mut browser = browser::Browser::new(cc);
+            let mut browser = browser::Tab::new(cc);
             browser.load(Url::new(&url).unwrap());
             Ok(Box::new(browser))
         }))
