@@ -63,13 +63,100 @@ lazy_static! {
 }
 
 
-/// The primary state controller for the web browser engine.
+/// Represents a browser tab or a parsing/processing context.
 ///
-/// This struct manages the lifecycle of web content from initial URL fetching
-/// through HTML sanitization and final 2D layout. It maintains a persistent
-/// reference to the `egui::Context` to perform font metric calculations and
-/// handles the application's scroll state.
-pub struct Browser {
+/// The `Tab` struct encapsulates information about the current state of a browser tab
+/// or a similar interactive environment. This includes visual components, stateful properties,
+/// and references to layout and document structures.
+///
+/// # Fields
+///
+/// ## `draw_commands`
+/// A collection of `DrawCommand` objects.
+///
+/// This vector stores instances of the `DrawCommand` type, which represent the visual rendering
+/// commands required to display the contents of a tab. These commands are typically generated
+/// during the rendering phase of a browser or UI application.
+///
+/// ### Example
+/// ```
+/// let draw_commands: Vec<DrawCommand> = Vec::new();
+/// // Add draw commands to the vector as required
+/// // draw_commands.push(DrawCommand::new(...));
+/// ```
+///
+/// ### Usage
+/// - Used in rendering pipelines for drawing UI elements.
+/// - Can be serialized or processed to generate graphical outputs.
+///
+/// ## `scroll_y`
+/// The current vertical scroll offset in points.
+///
+/// Represents how far the user has scrolled vertically within the content displayed by the tab.
+/// It can be used to track user interactions or adjust rendering logic for visible content.
+///
+/// ### Example
+/// ```
+/// let scroll_y: f32 = 120.5;  // Scrolled 120.5 points downward
+/// ```
+///
+/// ## `nodes`
+/// An optional reference to an `HtmlNode` structure.
+///
+/// This field holds an `Option` that references a tree-like structure (`HtmlNode`) representing 
+/// the parsed DOM (Document Object Model) for an HTML document. The use of `Rc` and `RefCell`
+/// provides shared ownership and interior mutability, allowing the DOM to be updated or accessed
+/// between different parts of the system.
+///
+/// ### Example
+/// ```
+/// if let Some(ref html_nodes) = tab.nodes {
+///     // Perform operations on the HtmlNode tree
+/// }
+/// ```
+///
+/// ## `document`
+/// An optional reference to a `LayoutNode` structure.
+///
+/// Similar to `nodes`, this field holds a reference to the layout tree, which is generated
+/// after the DOM is parsed and is used for rendering and visual arrangement of elements.
+/// This is commonly seen in rendering engines for browsers, where the layout tree is used 
+/// to position and size visual elements.
+///
+/// ### Example
+/// ```
+/// if let Some(ref layout_document) = tab.document {
+///     // Perform layout manipulations or rendering logic
+/// }
+/// ```
+///
+/// ## `url`
+/// An optional `Url` representing the current URL of the tab.
+///
+/// Used to track the address of the resource currently displayed in the tab. This could be
+/// an HTTP/HTTPS URL, or an internal representation such as a `file://` path. The `url`
+/// provides context for navigation, back/forward actions, or displaying the resource location.
+///
+/// ### Example
+/// ```
+/// if let Some(ref current_url) = tab.url {
+///     println!("Current tab URL: {}", current_url);
+/// }
+/// ```
+///
+/// ## `context`
+/// The rendering or processing `Context` associated with the tab.
+///
+/// Represents the broader context in which the tab operates, such as rendering environments
+/// or local state. This could include configurations, key-value storage, or system-level
+/// objects needed for operations.
+///
+/// ### Example
+/// ```
+/// let rendering_context = tab.context.clone();
+/// rendering_context.perform_action();
+/// ```
+pub struct Tab {
     /// A collection of `Token` objects.
     ///
     /// This vector stores instances of the `Token` type, which represent
@@ -101,13 +188,13 @@ pub struct Browser {
 
 const SCROLL_STEP: f32 = 100.0;
 
-impl Default for Browser {
+impl Default for Tab {
     /// Returns a `Browser` instance with empty buffers and default scroll position.
     ///
     /// Note: The `context` is initialized with a default handle which should be
     /// overwritten during `new()` to ensure it points to the active UI context.
     fn default() -> Self {
-        Browser {
+        Tab {
             draw_commands: Vec::new(),
             scroll_y: 0.0,
             nodes: None,
@@ -118,7 +205,7 @@ impl Default for Browser {
     }
 }
 
-impl Browser {
+impl Tab {
     /// Initializes a new browser instance and configures the UI environment.
     ///
     /// Sets the global visual theme to light mode to ensure text contrast and
@@ -485,7 +572,7 @@ impl Browser {
     }
 }
 
-impl eframe::App for Browser {
+impl eframe::App for Tab {
     /// Updates the application state and renders the user interface.
     ///
     /// This function is invoked during every frame update loop. It handles user input, updates internal
@@ -544,7 +631,7 @@ impl eframe::App for Browser {
             self.scroll_y += SCROLL_STEP;
         }
 
-        if (ctx.input(|i| i.pointer.primary_clicked()))
+        if ctx.input(|i| i.pointer.primary_clicked())
         {
             let pos = ctx.input(|i| i.pointer.interact_pos()).unwrap();
             self.click(pos);
