@@ -57,18 +57,16 @@ impl Browser {
         let tab = Rc::new(RefCell::new(Tab::new(cc)));
         let browser = Rc::new(RefCell::new(
             Browser { tabs: vec![tab.clone()], current_tab: tab.clone(),
-            chrome: Rc::new(RefCell::new(Chrome { browser: Weak::new() }))
+            chrome: Rc::new(RefCell::new(Chrome::new(Weak::new(), &cc.egui_ctx)))
          }));
 
         // 2. Now update Chrome with a real weak pointer to the browser
-        let chrome = Rc::new(RefCell::new(Chrome {
-            browser: Rc::downgrade(&browser),
-        }));
+        let chrome = Rc::new(RefCell::new(Chrome::new(Rc::downgrade(&browser), &cc.egui_ctx)));
 
-        browser.borrow_mut().chrome = chrome;
 
+        browser.borrow_mut().chrome = chrome.clone();
         browser
-        
+
 
     }
 
@@ -177,6 +175,7 @@ impl eframe::App for Browser {
     /// app.update(ctx, frame);
     /// ```
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.chrome.borrow_mut().init(ctx);
         self.current_tab.borrow_mut().draw(ctx, _frame);
 
         if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)){
