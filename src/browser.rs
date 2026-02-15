@@ -1,6 +1,7 @@
-﻿use std::cell::RefCell;
-use std::rc::Rc;
+﻿use std::cell::{RefCell, RefMut};
+use std::rc::{Rc, Weak};
 use std::sync::Arc;
+use crate::chrome::Chrome;
 use crate::tab::{Tab};
 use crate::url::Url;
 
@@ -44,17 +45,31 @@ use crate::url::Url;
 /// ```
 pub struct Browser {
     tabs: Vec<Rc<RefCell<Tab>>>,
-    current_tab: Rc<RefCell<Tab>>
+    current_tab: Rc<RefCell<Tab>>,
+    chrome: Rc<RefCell<Chrome>>,
 }
 
 impl Browser {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Rc<RefCell<Self>> {
         cc.egui_ctx.set_visuals(egui::Visuals::light());
         Self::setup_custom_fonts(&cc.egui_ctx);
 
         let tab = Rc::new(RefCell::new(Tab::new(cc)));
+        let browser = Rc::new(RefCell::new(
+            Browser { tabs: vec![tab.clone()], current_tab: tab.clone(),
+            chrome: Rc::new(RefCell::new(Chrome { browser: Weak::new() }))
+         }));
 
-        Browser { tabs: vec![tab.clone()], current_tab: tab.clone()}
+        // 2. Now update Chrome with a real weak pointer to the browser
+        let chrome = Rc::new(RefCell::new(Chrome {
+            browser: Rc::downgrade(&browser),
+        }));
+
+        browser.borrow_mut().chrome = chrome;
+
+        browser
+        
+
     }
 
     pub fn load_first_tab(&mut self, url: Url) {

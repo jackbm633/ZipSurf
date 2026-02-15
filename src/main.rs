@@ -1,6 +1,6 @@
+use std::cell::RefCell;
 use std::env::args;
-
-
+use std::rc::Rc;
 use crate::{url::Url};
 use crate::browser::Browser;
 
@@ -12,6 +12,7 @@ mod html_parser;
 mod css_parser;
 mod selector;
 mod browser;
+mod chrome;
 
 fn main() -> eframe::Result<(), eframe::Error> {
     let url = args().skip(1).next().expect("No URL provided.");
@@ -25,10 +26,21 @@ fn main() -> eframe::Result<(), eframe::Error> {
         "ZipSurf Browser",
         window_options,
         Box::new(|cc| {
-            let mut browser = Browser::new(cc);
-            browser.load_first_tab(Url::new(&url).unwrap());
-            Ok(Box::new(browser))
+            let browser = Browser::new(cc);
+            browser.borrow_mut().load_first_tab(Url::new(&url).unwrap());
+            Ok(Box::new(BrowserAppWrapper { browser: browser.clone()}))
         }))
         
     
+}
+
+struct BrowserAppWrapper {
+    browser: Rc<RefCell<Browser>>,
+}
+
+impl eframe::App for BrowserAppWrapper {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        // Delegate the update call to the actual Browser logic
+        self.browser.borrow_mut().update(ctx, frame);
+    }
 }
