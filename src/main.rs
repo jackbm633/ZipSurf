@@ -30,8 +30,6 @@ fn main() -> eframe::Result<(), eframe::Error> {
             browser.borrow_mut().load_first_tab(Url::new(&url).unwrap());
             Ok(Box::new(BrowserAppWrapper { browser: browser.clone()}))
         }))
-        
-    
 }
 
 struct BrowserAppWrapper {
