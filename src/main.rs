@@ -2,6 +2,7 @@ use std::env::args;
 
 
 use crate::{url::Url};
+use crate::browser::Browser;
 
 mod url;
 mod tab;
@@ -24,8 +25,8 @@ fn main() -> eframe::Result<(), eframe::Error> {
         "ZipSurf Browser",
         window_options,
         Box::new(|cc| {
-            let mut browser = tab::Tab::new(cc);
-            browser.load(Url::new(&url).unwrap());
+            let mut browser = Browser::new(cc);
+            browser.load_first_tab(Url::new(&url).unwrap());
             Ok(Box::new(browser))
         }))
         

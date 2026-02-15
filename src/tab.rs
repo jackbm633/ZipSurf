@@ -103,7 +103,7 @@ lazy_static! {
 /// ## `nodes`
 /// An optional reference to an `HtmlNode` structure.
 ///
-/// This field holds an `Option` that references a tree-like structure (`HtmlNode`) representing 
+/// This field holds an `Option` that references a tree-like structure (`HtmlNode`) representing
 /// the parsed DOM (Document Object Model) for an HTML document. The use of `Rc` and `RefCell`
 /// provides shared ownership and interior mutability, allowing the DOM to be updated or accessed
 /// between different parts of the system.
@@ -120,7 +120,7 @@ lazy_static! {
 ///
 /// Similar to `nodes`, this field holds a reference to the layout tree, which is generated
 /// after the DOM is parsed and is used for rendering and visual arrangement of elements.
-/// This is commonly seen in rendering engines for browsers, where the layout tree is used 
+/// This is commonly seen in rendering engines for browsers, where the layout tree is used
 /// to position and size visual elements.
 ///
 /// ### Example
@@ -180,8 +180,7 @@ pub struct Tab {
     scroll_y: f32,
     nodes: Option<Rc<RefCell<HtmlNode>>>,
     document: Option<Rc<RefCell<LayoutNode>>>,
-    url: Option<Url>,
-    context: Context
+    url: Option<Url>
 }
 
 
@@ -199,8 +198,7 @@ impl Default for Tab {
             scroll_y: 0.0,
             nodes: None,
             document: None,
-            url: None,
-            context: egui::Context::default(),
+            url: None
         }
     }
 }
@@ -215,15 +213,72 @@ impl Tab {
     /// * `cc` - Integration context providing access to the egui render state.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         cc.egui_ctx.set_visuals(egui::Visuals::light());
-        Self::setup_custom_fonts(&cc.egui_ctx);
 
         Self {
-            context: cc.egui_ctx.clone(),
             ..Default::default()
         }
     }
 
-    fn click(&mut self, position: Pos2) {
+
+    pub fn draw(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.draw_commands.is_empty() {
+            match self.document.as_mut() {
+                None => { panic!("Browser document not initialized.") },
+                Some(doc) => {
+                    LayoutNode::layout(doc.clone(), ctx.clone());
+                    self.draw_commands = vec![];
+                    LayoutNode::paint_tree(doc.clone(), &mut self.draw_commands, Vec2::ZERO);
+
+                }
+            }
+        }
+
+
+
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new().fill(Color32::WHITE))
+            .show(ctx, |ui| {
+                let painter = ui.painter();
+
+                for text in &self.draw_commands {
+                    if (text.top() < self.scroll_y + HEIGHT) || (text.bottom() > self.scroll_y) {
+                        match text {
+                            DrawCommand::DrawText(text) => {
+                                painter.galley(
+                                    Pos2::new(text.x, text.y - self.scroll_y),
+                                    text.galley.clone(),
+                                    Color32::BLACK,
+                                );
+                            }
+                            DrawCommand::DrawRect(rect) => {
+                                painter.rect(Rect::from_two_pos(
+                                    (rect.top_left - Pos2::new(0.0, self.scroll_y)).to_pos2(),
+                                    (rect.bottom_right - Pos2::new(0.0, self.scroll_y)).to_pos2()),
+                                             0, rect.color,
+                                             Stroke::new(0.0, Color32::BLACK),
+                                             StrokeKind::Middle);
+                            }
+                        }
+                    }
+
+                    // Simple culling: don't draw text that is off-screen
+
+                }
+            });
+    }
+
+    pub fn scroll_down(&mut self) {
+        match &self.document {
+            None => { panic!("Browser document not initialized.") },
+            Some(doc) => {
+                let max_y = doc.borrow().size.unwrap_or(Vec2::ZERO).y + 2.0*VSTEP - HEIGHT;
+                self.scroll_y = (self.scroll_y + crate::tab::SCROLL_STEP).min(max_y);
+            }
+        }
+        self.scroll_y += crate::tab::SCROLL_STEP;
+    }
+
+    pub(crate) fn click(&mut self, position: Pos2) {
         let mut new_pos = position.clone();
         new_pos.y += self.scroll_y;
 
@@ -452,223 +507,9 @@ impl Tab {
         }
     }
 
-    /// Configures and sets up custom fonts for the `egui` UI context.
-    ///
-    /// This function overrides the default font definitions and adds multiple custom fonts
-    /// to the `egui` context. The fonts are loaded from static assets and associated with
-    /// specific names for usage within the application. Additionally, custom font families
-    /// are configured to define fallbacks when rendering text.
-    ///
-    /// # Arguments
-    ///
-    /// * `ctx` - A mutable reference to the `egui::Context`, which manages the UI state and
-    ///           allows setting custom fonts.
-    ///
-    /// # Details
-    ///
-    /// 1. **Custom Font Data Insertion:**
-    ///    - Fonts such as "DroidSansFallbackFull.ttf", "Roboto-Regular.ttf",
-    ///      "Roboto-Italic.ttf", "Roboto-BoldItalic.ttf", and "Roboto-Bold.ttf"
-    ///      are loaded via the `include_bytes!` macro and inserted into the font
-    ///      definitions using unique names like "droid-sans-fallback", "sans", "sansitalic",
-    ///      "sansbold", and "sansbolditalic".
-    ///
-    /// 2. **Font Family Assignments:**
-    ///    - The loaded fonts are organized into custom font families (`sans`, `sansitalic`,
-    ///      `sansbold`, and `sansbolditalic`) for specialized usage.
-    ///    - Each family holds a list of corresponding font names for rendering text.
-    ///
-    /// 3. **Fallback Configuration:**
-    ///    - The `droid-sans-fallback` font is appended as a fallback font to each of the
-    ///      custom font families, ensuring proper glyph rendering if the primary font lacks
-    ///      support for certain characters.
-    ///
-    /// 4. **Apply the Fonts:**
-    ///    - The custom font definitions are applied to the provided `egui::Context`
-    ///      using the `set_fonts` method.
-    ///
-    /// # Example Usage
-    ///
-    /// ```rust
-    /// use egui::Context;
-    ///
-    /// fn main() {
-    ///     let ctx = egui::Context::default();
-    ///     setup_custom_fonts(&ctx);
-    ///     // Now the UI will render using the custom fonts defined in this function
-    /// }
-    /// ```
-    ///
-    /// # Dependencies
-    /// Requires font assets to be present in the `../assets/` directory relative to the
-    /// source file, as specified in the `include_bytes!` macro.
-    ///
-    /// # Notes
-    /// This function should be called during the initialization or setup phase of the
-    /// application to ensure the custom fonts are used throughout the UI.
-    fn setup_custom_fonts(ctx: &egui::Context) {
-        let mut fonts = egui::FontDefinitions::default();
-
-        fonts.font_data.insert(
-            "droid-sans-fallback".to_owned(),
-            Arc::new(egui::FontData::from_static(include_bytes!("../assets/DroidSansFallbackFull.ttf"))),
-        );
-
-        fonts.font_data.insert(
-            "sans".to_owned(),
-            Arc::new(egui::FontData::from_static(include_bytes!("../assets/Roboto-Regular.ttf")))
-        );
-
-        fonts.font_data.insert(
-            "sansitalic".to_owned(),
-            Arc::new(egui::FontData::from_static(include_bytes!("../assets/Roboto-Italic.ttf")))
-        );
-
-        fonts.font_data.insert(
-            "sansbolditalic".to_owned(),
-            Arc::new(egui::FontData::from_static(include_bytes!("../assets/Roboto-BoldItalic.ttf")))
-        );
-
-        fonts.font_data.insert(
-            "sansbold".to_owned(),
-            Arc::new(egui::FontData::from_static(include_bytes!("../assets/Roboto-Bold.ttf")))
-        );
-
-        fonts.families.insert(
-            egui::FontFamily::Name("sansbold".into()),
-            vec!["sansbold".to_owned()],
-        );
-        fonts.families.insert(
-            egui::FontFamily::Name("sansitalic".into()),
-            vec!["sansitalic".to_owned()],
-        );
-        fonts.families.insert(
-            egui::FontFamily::Name("sans".into()),
-            vec!["sans".to_owned()],
-        );
-        fonts.families.insert(
-            egui::FontFamily::Name("sansbolditalic".into()),
-            vec!["sansbolditalic".to_owned()],
-        );
-
-
-
-
-        // Append to existing families to serve as a fallback
-        fonts.families.get_mut(&egui::FontFamily::Name("sans".into()))
-            .unwrap()
-            .push("droid-sans-fallback".to_owned());
-        fonts.families.get_mut(&egui::FontFamily::Name("sansbold".into()))
-            .unwrap()
-            .push("droid-sans-fallback".to_owned());
-        fonts.families.get_mut(&egui::FontFamily::Name("sansitalic".into()))
-            .unwrap()
-            .push("droid-sans-fallback".to_owned());
-        fonts.families.get_mut(&egui::FontFamily::Name("sansbolditalic".into()))
-            .unwrap()
-            .push("droid-sans-fallback".to_owned());
-
-        ctx.set_fonts(fonts);
-    }
 }
 
-impl eframe::App for Tab {
-    /// Updates the application state and renders the user interface.
-    ///
-    /// This function is invoked during every frame update loop. It handles user input, updates internal
-    /// state data, and renders text elements onto the screen.
-    ///
-    /// # Parameters
-    /// - `ctx`: A reference to the `egui::Context` object, which provides access to the current user interface context.
-    /// - `_frame`: A mutable reference to the `eframe::Frame` object, representing the application frame (not currently used).
-    ///
-    /// # Description
-    /// - If `self.texts` is empty, it attempts to initialize it from `self.document`. The document is laid out, and the `texts`
-    ///   field of the document is cloned into `self.texts`.
-    /// - Responds to user input:
-    ///   - If the user presses the "ArrowDown" key, the `self.scroll_y` value increases by the predefined `SCROLL_STEP`,
-    ///     effectively scrolling the view down.
-    /// - Renders text elements:
-    ///   - The function uses `egui::CentralPanel` to define the main rendering area.
-    ///   - It iterates over all `self.texts` and checks if each text element is in the visible scroll region.
-    ///   - If the text element is within the visible region, it is drawn using the `painter.galley()` method at the appropriate
-    ///     position and with a black color (`Color32::BLACK`).
-    ///
-    /// # Panics
-    /// - If `self.document` is not initialized (`None`) when it is required to fetch text elements, the function will panic
-    ///   with the message: "Browser document not initialized."
-    ///
-    /// # Notes
-    /// - The `scroll_y` value helps manage vertical scrolling within the rendering area.
-    /// - Text elements are culled (skipped) if they are outside the currently visible vertical region.
-    ///
-    /// # Example Usage
-    /// ```rust
-    /// app.update(ctx, frame);
-    /// ```
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
 
-        if self.draw_commands.is_empty() {
-            match self.document.as_mut() {
-                None => { panic!("Browser document not initialized.") },
-                Some(doc) => {
-                    LayoutNode::layout(doc.clone(), ctx.clone());
-                    self.draw_commands = vec![];
-                    LayoutNode::paint_tree(doc.clone(), &mut self.draw_commands, Vec2::ZERO);
-
-                }
-            }
-        }
-
-        if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)){
-            match &self.document {
-                None => { panic!("Browser document not initialized.") },
-                Some(doc) => {
-                    let max_y = doc.borrow().size.unwrap_or(Vec2::ZERO).y + 2.0*VSTEP - HEIGHT;
-                    self.scroll_y = (self.scroll_y + SCROLL_STEP).min(max_y);
-                }
-            }
-            self.scroll_y += SCROLL_STEP;
-        }
-
-        if ctx.input(|i| i.pointer.primary_clicked())
-        {
-            let pos = ctx.input(|i| i.pointer.interact_pos()).unwrap();
-            self.click(pos);
-        }
-
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(Color32::WHITE))
-            .show(ctx, |ui| {
-            let painter = ui.painter();
-
-            for text in &self.draw_commands {
-                if (text.top() < self.scroll_y + HEIGHT) || (text.bottom() > self.scroll_y) {
-                    match text {
-                        DrawCommand::DrawText(text) => {
-                            painter.galley(
-                                Pos2::new(text.x, text.y - self.scroll_y),
-                                text.galley.clone(),
-                                Color32::BLACK,
-                            );
-                        }
-                        DrawCommand::DrawRect(rect) => {
-                            painter.rect(Rect::from_two_pos(
-                                (rect.top_left - Pos2::new(0.0, self.scroll_y)).to_pos2(),
-                                (rect.bottom_right - Pos2::new(0.0, self.scroll_y)).to_pos2()),
-                                         0, rect.color,
-                                         Stroke::new(0.0, Color32::BLACK),
-                                         StrokeKind::Middle);
-                        }
-                    }
-                }
-
-                // Simple culling: don't draw text that is off-screen
-
-            }
-        });
-    }
-}
 
 
 
