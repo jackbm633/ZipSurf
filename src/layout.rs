@@ -1,7 +1,7 @@
 ﻿
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::browser::{DrawCommand, DrawRect, DrawText};
+use crate::tab::{DrawCommand, DrawRect, DrawText};
 use crate::node::{HtmlNode, HtmlNodeType};
 use eframe::epaint::{Color32, FontFamily, FontId};
 use egui::{Context, Galley, TextBuffer, Vec2};
