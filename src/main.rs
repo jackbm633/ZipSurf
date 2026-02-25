@@ -13,6 +13,7 @@ mod css_parser;
 mod selector;
 mod browser;
 mod chrome;
+mod rect;
 
 fn main() -> eframe::Result<(), eframe::Error> {
     let url = args().skip(1).next().expect("No URL provided.");
