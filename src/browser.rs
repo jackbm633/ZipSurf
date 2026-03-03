@@ -1,8 +1,12 @@
 ﻿use std::cell::{RefCell, RefMut};
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
+use eframe::emath::{Pos2, Rect};
+use eframe::epaint::{Color32, Stroke, StrokeKind};
+use egui::{Painter, Vec2};
 use crate::chrome::Chrome;
-use crate::tab::{Tab};
+use crate::layout::HEIGHT;
+use crate::tab::{DrawCommand, Tab};
 use crate::url::Url;
 
 /// A `Browser` structure that simulates a web browser with multiple tabs.
@@ -44,7 +48,7 @@ use crate::url::Url;
 /// assert_eq!(browser.current_tab.borrow().url, "https://example.com");
 /// ```
 pub struct Browser {
-    tabs: Vec<Rc<RefCell<Tab>>>,
+    pub(crate) tabs: Vec<Rc<RefCell<Tab>>>,
     current_tab: Rc<RefCell<Tab>>,
     chrome: Rc<RefCell<Chrome>>,
 }
@@ -54,7 +58,7 @@ impl Browser {
         cc.egui_ctx.set_visuals(egui::Visuals::light());
         Self::setup_custom_fonts(&cc.egui_ctx);
 
-        let tab = Rc::new(RefCell::new(Tab::new(cc)));
+        let tab = Rc::new(RefCell::new(Tab::new(cc, 0.0)));
         let browser = Rc::new(RefCell::new(
             Browser { tabs: vec![tab.clone()], current_tab: tab.clone(),
             chrome: Rc::new(RefCell::new(Chrome::new(Weak::new(), &cc.egui_ctx)))
@@ -72,6 +76,7 @@ impl Browser {
 
     pub fn load_first_tab(&mut self, url: Url) {
         self.tabs[0].borrow_mut().load(url);
+        self.tabs[0].borrow_mut().tab_height = HEIGHT - self.chrome.borrow().bottom();
     }
 
     fn setup_custom_fonts(ctx: &egui::Context) {
@@ -138,54 +143,80 @@ impl Browser {
 
         ctx.set_fonts(fonts);
     }
+
+    fn draw_on_screen(painter: &Painter, scroll_y: f32, cmd: &DrawCommand) {
+        match cmd {
+            DrawCommand::DrawText(text) => {
+                painter.galley(
+                    Pos2::new(text.x, text.y - scroll_y),
+                    text.galley.clone(),
+                    Color32::BLACK,
+                );
+            }
+            DrawCommand::DrawRect(rect) => {
+                painter.rect(
+                    rect.rect.translate(Vec2::new(0.0, -scroll_y)),
+                    0.0,
+                    rect.color,
+                    Stroke::new(0.0, Color32::BLACK),
+                    StrokeKind::Middle,
+                );
+            },
+            DrawCommand::DrawOutline(outline) => {
+                painter.rect(
+                    outline.rect,
+                    0.0,
+                    Color32::TRANSPARENT,
+                    Stroke::new(outline.thickness, outline.color),
+                    StrokeKind::Middle
+                );
+            }
+            DrawCommand::DrawLine(line) => {
+                painter.line(
+                    vec![line.from, line.to],
+                    Stroke::new(line.thickness, line.color)
+                );
+            }
+        }
+    }
 }
 
 impl eframe::App for Browser {
-    /// Updates the application state and renders the user interface.
-    ///
-    /// This function is invoked during every frame update loop. It handles user input, updates internal
-    /// state data, and renders text elements onto the screen.
-    ///
-    /// # Parameters
-    /// - `ctx`: A reference to the `egui::Context` object, which provides access to the current user interface context.
-    /// - `_frame`: A mutable reference to the `eframe::Frame` object, representing the application frame (not currently used).
-    ///
-    /// # Description
-    /// - If `self.texts` is empty, it attempts to initialize it from `self.document`. The document is laid out, and the `texts`
-    ///   field of the document is cloned into `self.texts`.
-    /// - Responds to user input:
-    ///   - If the user presses the "ArrowDown" key, the `self.scroll_y` value increases by the predefined `SCROLL_STEP`,
-    ///     effectively scrolling the view down.
-    /// - Renders text elements:
-    ///   - The function uses `egui::CentralPanel` to define the main rendering area.
-    ///   - It iterates over all `self.texts` and checks if each text element is in the visible scroll region.
-    ///   - If the text element is within the visible region, it is drawn using the `painter.galley()` method at the appropriate
-    ///     position and with a black color (`Color32::BLACK`).
-    ///
-    /// # Panics
-    /// - If `self.document` is not initialized (`None`) when it is required to fetch text elements, the function will panic
-    ///   with the message: "Browser document not initialized."
-    ///
-    /// # Notes
-    /// - The `scroll_y` value helps manage vertical scrolling within the rendering area.
-    /// - Text elements are culled (skipped) if they are outside the currently visible vertical region.
-    ///
-    /// # Example Usage
-    /// ```rust
-    /// app.update(ctx, frame);
-    /// ```
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.chrome.borrow_mut().init(ctx);
-        self.current_tab.borrow_mut().draw(ctx, _frame);
+
+        let mut tab = self.current_tab.borrow_mut();
+        tab.update_layout(ctx);
+
+        self.chrome.borrow_mut().draw(ctx, &*self.tabs, &self.current_tab);
 
         if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)){
-           self.current_tab.borrow_mut().scroll_down();
+            tab.scroll_down();
         }
 
         if ctx.input(|i| i.pointer.primary_clicked())
         {
             let pos = ctx.input(|i| i.pointer.interact_pos()).unwrap();
-            self.current_tab.borrow_mut().click(pos)
+            tab.click(pos)
         }
+
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new().fill(Color32::WHITE))
+            .show(ctx, |ui| {
+                let painter = ui.painter();
+                let scroll_y = tab.scroll_y;
+                let chrome = self.chrome.borrow();
+
+                for cmd in &*chrome.draw_commands
+                {
+                    Self::draw_on_screen(painter, 0.0, &cmd);
+                }
+
+                for cmd in &*tab.draw_commands {
+                    if (cmd.top() < scroll_y + HEIGHT) || (cmd.bottom() > scroll_y) {
+                        Self::draw_on_screen(painter, scroll_y - self.chrome.borrow().bottom(), &cmd);
+                    }
+                }
+            });
     }
 }

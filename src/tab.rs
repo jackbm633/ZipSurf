@@ -35,6 +35,7 @@
 //! ```
 //! fn
 use std::cell::RefCell;
+use std::cmp::max;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::str::FromStr;
@@ -175,12 +176,13 @@ pub struct Tab {
     /// # Usage
     /// - Maintain the sequential order of tokens for parsing tasks.
     /// - Perform operations like iteration, filtering, or mapping on the list of tokens.
-    draw_commands: Vec<DrawCommand>,
+    pub(crate) draw_commands: Vec<DrawCommand>,
     /// The current vertical scroll offset in points.
-    scroll_y: f32,
+    pub(crate) scroll_y: f32,
     nodes: Option<Rc<RefCell<HtmlNode>>>,
     document: Option<Rc<RefCell<LayoutNode>>>,
-    url: Option<Url>
+    url: Option<Url>,
+    pub(crate) tab_height: f32,
 }
 
 
@@ -198,7 +200,8 @@ impl Default for Tab {
             scroll_y: 0.0,
             nodes: None,
             document: None,
-            url: None
+            url: None,
+            tab_height: 0.0,
         }
     }
 }
@@ -211,16 +214,17 @@ impl Tab {
     ///
     /// # Arguments
     /// * `cc` - Integration context providing access to the egui render state.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, height: f32) -> Self {
         cc.egui_ctx.set_visuals(egui::Visuals::light());
 
         Self {
+            tab_height: height,
             ..Default::default()
         }
     }
 
 
-    pub fn draw(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    pub fn update_layout(&mut self, ctx: &egui::Context) {
         if self.draw_commands.is_empty() {
             match self.document.as_mut() {
                 None => { panic!("Browser document not initialized.") },
@@ -232,46 +236,13 @@ impl Tab {
                 }
             }
         }
-
-
-
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(Color32::WHITE))
-            .show(ctx, |ui| {
-                let painter = ui.painter();
-
-                for text in &self.draw_commands {
-                    if (text.top() < self.scroll_y + HEIGHT) || (text.bottom() > self.scroll_y) {
-                        match text {
-                            DrawCommand::DrawText(text) => {
-                                painter.galley(
-                                    Pos2::new(text.x, text.y - self.scroll_y),
-                                    text.galley.clone(),
-                                    Color32::BLACK,
-                                );
-                            }
-                            DrawCommand::DrawRect(rect) => {
-                                painter.rect(Rect::from_two_pos(
-                                    (rect.top_left - Pos2::new(0.0, self.scroll_y)).to_pos2(),
-                                    (rect.bottom_right - Pos2::new(0.0, self.scroll_y)).to_pos2()),
-                                             0, rect.color,
-                                             Stroke::new(0.0, Color32::BLACK),
-                                             StrokeKind::Middle);
-                            }
-                        }
-                    }
-
-                    // Simple culling: don't draw text that is off-screen
-
-                }
-            });
     }
 
     pub fn scroll_down(&mut self) {
         match &self.document {
             None => { panic!("Browser document not initialized.") },
             Some(doc) => {
-                let max_y = doc.borrow().size.unwrap_or(Vec2::ZERO).y + 2.0*VSTEP - HEIGHT;
+                let max_y = f32::max(0.0, doc.borrow().size.unwrap_or(Vec2::ZERO).y + 2.0*VSTEP - self.tab_height);
                 self.scroll_y = (self.scroll_y + crate::tab::SCROLL_STEP).min(max_y);
             }
         }
@@ -536,38 +507,7 @@ pub(crate) struct DrawText {
 }
 
 pub(crate) struct DrawRect {
-    /// Represents the top-left position of a rectangle or a bounding box.
-    ///
-    /// # Fields
-    /// - `top_left`: A `Pos2` struct that defines the coordinates of the
-    /// top-left corner. It typically contains `x` and `y` values, denoting
-    /// the horizontal and vertical positions in 2D space, respectively.
-    ///
-    /// # Example
-    /// ```
-    /// let rect_top_left = Pos2 { x: 0.0, y: 0.0 };
-    /// let my_rectangle = Rectangle { top_left: rect_top_left };
-    /// ```
-    pub top_left: Pos2,
-    /// Represents the bottom-right corner of a rectangle or bounding box.
-    ///
-    /// `bottom_right` is a field of type `Pos2` that defines the position
-    /// of the bottom-right corner in a 2D coordinate space. This is
-    /// typically used to describe geometric boundaries or the dimensions
-    /// of a rectangular area.
-    ///
-    /// # Example
-    /// ```rust
-    /// let rect_bottom_right = Pos2 { x: 10.0, y: 5.0 };
-    /// println!("Bottom-right corner is at: ({}, {})", rect_bottom_right.x, rect_bottom_right.y);
-    /// ```
-    ///
-    /// # Fields
-    /// - `bottom_right`: A `Pos2` struct containing `x` and `y` coordinates.
-    ///
-    /// # See also
-    /// - `Pos2` for understanding the structure of the coordinate type.
-    pub bottom_right: Pos2,
+    pub rect: Rect,
     /// A public field representing the color of the object.
     ///
     /// This field uses the `Color32` type, which encapsulates a 32-bit color value,
@@ -591,9 +531,23 @@ pub(crate) struct DrawRect {
     pub color: Color32
 }
 
+pub(crate) struct DrawOutline{
+    pub(crate) rect: Rect,
+    pub(crate) color: Color32,
+    pub(crate) thickness: f32
+}
+
+pub struct DrawLine {
+    pub(crate) from: Pos2,
+    pub(crate) to: Pos2,
+    pub(crate) color: Color32,
+    pub(crate) thickness: f32
+}
 pub enum DrawCommand {
     DrawText(DrawText),
-    DrawRect(DrawRect)
+    DrawRect(DrawRect),
+    DrawOutline(DrawOutline),
+    DrawLine(DrawLine),
 }
 
 impl DrawCommand {
@@ -628,14 +582,16 @@ impl DrawCommand {
     /// # Panics
     /// This function does not explicitly panic under normal circumstances, provided
     /// valid `DrawCommand` variants are used.
-    fn bottom(&self) -> f32 {
+    pub(crate) fn bottom(&self) -> f32 {
         match self {
             DrawCommand::DrawText(txt) => {
                 txt.y + txt.galley.rect.height()
             }
             DrawCommand::DrawRect(rct) => {
-                rct.bottom_right.y
-            }
+                rct.rect.bottom()
+            },
+            DrawCommand::DrawOutline(out) => out.rect.top(),
+            DrawCommand::DrawLine(line) => f32::min(line.from.y, line.to.y)
         }
     }
 
@@ -660,14 +616,16 @@ impl DrawCommand {
     /// assert_eq!(rect_command.top(), 20.0);
     /// ```
     /// ```
-    fn top(&self) -> f32 {
+    pub(crate) fn top(&self) -> f32 {
         match self {
             DrawCommand::DrawText(txt) => {
                 txt.y
             }
             DrawCommand::DrawRect(rct) => {
-                rct.top_left.y
-            }
+                rct.rect.top()
+            },
+            DrawCommand::DrawOutline(out) => out.rect.top(),
+            DrawCommand::DrawLine(line) => f32::max(line.from.y, line.to.y)
         }
     }
 }

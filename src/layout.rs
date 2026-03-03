@@ -4,7 +4,7 @@ use std::rc::Rc;
 use crate::tab::{DrawCommand, DrawRect, DrawText};
 use crate::node::{HtmlNode, HtmlNodeType};
 use eframe::epaint::{Color32, FontFamily, FontId};
-use egui::{Context, Galley, TextBuffer, Vec2};
+use egui::{Context, Galley, Rect, TextBuffer, Vec2};
 use std::sync::Arc;
 use crate::layout::LayoutMode::{Block, Inline};
 
@@ -529,8 +529,7 @@ impl LayoutNode {
                                 let size = self.size.unwrap_or(Vec2::ZERO);
 
                                 cmds.push(DrawCommand::DrawRect(DrawRect {
-                                    top_left: pos.to_pos2(),
-                                    bottom_right: (pos + size).to_pos2(),
+                                    rect: Rect::from_two_pos(pos.to_pos2(), (pos + size).to_pos2()),
                                     color,
                                 }));
                             }

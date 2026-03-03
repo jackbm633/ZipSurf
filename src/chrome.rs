@@ -1,10 +1,13 @@
 ﻿use std::cell::RefCell;
-use std::rc::{Weak};
+use std::rc::{Rc, Weak};
 use std::sync::Arc;
-use eframe::epaint::{FontFamily, FontId};
+use eframe::emath::Vec2;
+use eframe::epaint::{FontFamily, FontId, Stroke, StrokeKind};
 use egui::{Color32, Pos2, Rect};
 use egui::WidgetText::Galley;
 use crate::browser::Browser;
+use crate::layout::{LayoutNode, HEIGHT, WIDTH};
+use crate::tab::{DrawCommand, DrawLine, DrawOutline, DrawText, Tab};
 
 pub struct Chrome {
     pub(crate) browser: Weak<RefCell<Browser>>,
@@ -13,8 +16,11 @@ pub struct Chrome {
     padding: f32,
     tabbar_top: f32,
     tabbar_bottom: f32,
-    newtab_rect: Rect
+    newtab_rect: Rect,
+    pub(crate) draw_commands: Vec<DrawCommand>,
 }
+
+
 
 impl Chrome {
     pub fn new(browser: Weak<RefCell<Browser>>, ctx: &egui::Context) -> Self {
@@ -27,8 +33,13 @@ impl Chrome {
             padding: 5.0,
             tabbar_top: 0.0,
             tabbar_bottom: 10.0,
-            newtab_rect: Rect::ZERO
+            newtab_rect: Rect::ZERO,
+            draw_commands: vec!()
         }
+    }
+    
+    pub fn bottom(&self) -> f32 {
+        self.tabbar_bottom
     }
 
     pub fn init(&mut self, ctx: &egui::Context) {
@@ -36,14 +47,13 @@ impl Chrome {
             return;
         }
 
-        let font_id = FontId::new(20.0, FontFamily::Name(Arc::from("sansbold".to_string())));
+        let font_id = FontId::new(10.0, FontFamily::Name(Arc::from("sansbold".to_string())));
 
         let line_height = ctx.fonts_mut(|f| f.row_height(&font_id));
         
         self.font_id = Some(font_id.clone());
-        self.line_height = line_height;
-        self.tabbar_top = line_height + 10.0;
-
+        self.line_height = line_height;;
+        self.tabbar_bottom = line_height + 10.0;
         let plus_galley = ctx.fonts_mut(|f| f.layout("+".into(),
                                                      font_id, Color32::BLACK, 0.0));
         let plus_width = plus_galley.size().x + 10.0;
@@ -55,13 +65,89 @@ impl Chrome {
 
     fn tab_rect(&self, ctx: &egui::Context, i: usize) -> Rect {
         let tabs_start = self.newtab_rect.right() + self.padding;
-        let text_width = ctx.fonts_mut(|f| f.layout("Tab X".into(),
-                                                    self.font_id.clone().unwrap(), Color32::BLACK,
-                                                    0.0)).size().x;
+        let text_width = ctx.fonts_mut(|f| f.layout_no_wrap("Tab X".into(),
+                                                    self.font_id.clone().unwrap(), Color32::BLACK)).size().x;
         let tab_width = text_width + 10.0;
         let tab_height = self.line_height;
         let tab_rect = Rect::from_two_pos(Pos2::new(tabs_start + i as f32 * tab_width, self.tabbar_top),
-                                          Pos2::new(tabs_start + (i + 1) as f32 * tab_width, self.tabbar_top + tab_height));
+                                          Pos2::new(tabs_start + (i + 1) as f32 * tab_width, self.tabbar_bottom));
         tab_rect
+    }
+
+    pub fn draw(&mut self, ctx: &egui::Context, tabs: &[Rc<RefCell<Tab>>], current_tab: &Rc<RefCell<Tab>>) {
+        self.draw_commands.clear();
+        // Chrome-specific drawing logic would go here,
+        // potentially using the passed 'ui' or its painter.
+        self.draw_commands.push(DrawCommand::DrawOutline(
+            DrawOutline {
+                rect: self.newtab_rect,
+                color: Color32::BLACK,
+                thickness: 1.0
+            }
+        ));
+        self.draw_commands.push(
+            DrawCommand::DrawText(
+                DrawText {
+                    x: self.newtab_rect.left() + self.padding,
+                    y: self.newtab_rect.top(),
+                    galley: ctx.fonts_mut(|f| f.layout("+".into(),
+                    self.font_id.clone().unwrap(), Color32::BLACK,
+                    0.0))
+                }
+            )
+        );
+
+        // Draw each tab
+        for (i, tab_rc) in tabs.iter().enumerate() {
+            let bounds= self.tab_rect(ctx, i);
+            self.draw_commands.push(DrawCommand::DrawLine(
+                DrawLine {
+                    from: bounds.left_top(),
+                    to: bounds.left_bottom(),
+                    color: Color32::BLACK,
+                    thickness: 1.0
+                }
+            ));
+            self.draw_commands.push(DrawCommand::DrawLine(
+                DrawLine {
+                    from: bounds.right_top(),
+                    to: bounds.right_bottom(),
+                    color: Color32::BLACK,
+                    thickness: 1.0
+                }
+            ));
+
+            self.draw_commands.push(
+                DrawCommand::DrawText(
+                    DrawText {
+                        x: bounds.left() + self.padding,
+                        y: bounds.top() + self.padding,
+                        galley: ctx.fonts_mut(|f| f.layout_no_wrap(format!("Tab {:?}", i).into(),
+                                                           self.font_id.clone().unwrap(), Color32::BLACK))
+                    }
+                )
+            );
+
+            self.draw_commands.push(DrawCommand::DrawLine(
+                DrawLine {
+                    from: Pos2::new(0.0, bounds.bottom()),
+                    to: bounds.left_bottom(),
+                    color: Color32::BLACK,
+                    thickness: 1.0
+                }
+            ));
+
+            self.draw_commands.push(DrawCommand::DrawLine(
+                DrawLine {
+                    from: bounds.right_bottom(),
+                    to: Pos2::new(WIDTH, bounds.bottom()),
+                    color: Color32::BLACK,
+                    thickness: 1.0
+                }
+            ));
+
+
+
+        }
     }
 }
