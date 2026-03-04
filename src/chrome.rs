@@ -3,11 +3,12 @@ use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use eframe::emath::Vec2;
 use eframe::epaint::{FontFamily, FontId, Stroke, StrokeKind};
-use egui::{Color32, Pos2, Rect};
+use egui::{Color32, Context, Pos2, Rect};
 use egui::WidgetText::Galley;
 use crate::browser::Browser;
 use crate::layout::{LayoutNode, HEIGHT, WIDTH};
-use crate::tab::{DrawCommand, DrawLine, DrawOutline, DrawText, Tab};
+use crate::tab::{DrawCommand, DrawLine, DrawOutline, DrawRect, DrawText, Tab};
+use crate::url::Url;
 
 pub struct Chrome {
     pub(crate) browser: Weak<RefCell<Browser>>,
@@ -19,7 +20,10 @@ pub struct Chrome {
     newtab_rect: Rect,
     pub(crate) draw_commands: Vec<DrawCommand>,
 }
-
+pub enum ChromeAction {
+    NewTab,
+    SelectTab(usize),
+}
 
 
 impl Chrome {
@@ -78,6 +82,15 @@ impl Chrome {
         self.draw_commands.clear();
         // Chrome-specific drawing logic would go here,
         // potentially using the passed 'ui' or its painter.
+
+        self.draw_commands.push(DrawCommand::DrawRect(
+            DrawRect {
+                rect: Rect::from_two_pos(
+                    Pos2::new(0.0, 0.0), Pos2::new(WIDTH, self.bottom())),
+                color: Color32::WHITE,
+            }
+        ));
+
         self.draw_commands.push(DrawCommand::DrawOutline(
             DrawOutline {
                 rect: self.newtab_rect,
@@ -128,26 +141,44 @@ impl Chrome {
                 )
             );
 
-            self.draw_commands.push(DrawCommand::DrawLine(
-                DrawLine {
-                    from: Pos2::new(0.0, bounds.bottom()),
-                    to: bounds.left_bottom(),
-                    color: Color32::BLACK,
-                    thickness: 1.0
-                }
-            ));
+            if (Rc::ptr_eq(tab_rc, current_tab)) {
+                self.draw_commands.push(DrawCommand::DrawLine(
+                    DrawLine {
+                        from: Pos2::new(0.0, bounds.bottom()),
+                        to: bounds.left_bottom(),
+                        color: Color32::BLACK,
+                        thickness: 1.0
+                    }
+                ));
 
-            self.draw_commands.push(DrawCommand::DrawLine(
-                DrawLine {
-                    from: bounds.right_bottom(),
-                    to: Pos2::new(WIDTH, bounds.bottom()),
-                    color: Color32::BLACK,
-                    thickness: 1.0
-                }
-            ));
+                self.draw_commands.push(DrawCommand::DrawLine(
+                    DrawLine {
+                        from: bounds.right_bottom(),
+                        to: Pos2::new(WIDTH, bounds.bottom()),
+                        color: Color32::BLACK,
+                        thickness: 1.0
+                    }
+                ));
+            }
+            
 
 
 
         }
+    }
+
+    pub fn click(&mut self, ctx: &Context, pos: Pos2, tab_count: usize) -> Option<ChromeAction> {
+        if self.newtab_rect.contains(pos) {
+            return Some(ChromeAction::NewTab);
+        }
+
+        // Check if any existing tab was clicked
+        for i in 0..tab_count {
+            if self.tab_rect(ctx, i).contains(pos) {
+                return Some(ChromeAction::SelectTab(i));
+            }
+        }
+
+        None
     }
 }

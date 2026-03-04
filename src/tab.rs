@@ -214,8 +214,8 @@ impl Tab {
     ///
     /// # Arguments
     /// * `cc` - Integration context providing access to the egui render state.
-    pub fn new(cc: &eframe::CreationContext<'_>, height: f32) -> Self {
-        cc.egui_ctx.set_visuals(egui::Visuals::light());
+    pub fn new(cc: &Context, height: f32) -> Self {
+        cc.set_visuals(egui::Visuals::light());
 
         Self {
             tab_height: height,

@@ -3,8 +3,8 @@ use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use eframe::emath::{Pos2, Rect};
 use eframe::epaint::{Color32, Stroke, StrokeKind};
-use egui::{Painter, Vec2};
-use crate::chrome::Chrome;
+use egui::{Context, Painter, Vec2};
+use crate::chrome::{Chrome, ChromeAction};
 use crate::layout::HEIGHT;
 use crate::tab::{DrawCommand, Tab};
 use crate::url::Url;
@@ -58,7 +58,7 @@ impl Browser {
         cc.egui_ctx.set_visuals(egui::Visuals::light());
         Self::setup_custom_fonts(&cc.egui_ctx);
 
-        let tab = Rc::new(RefCell::new(Tab::new(cc, 0.0)));
+        let tab = Rc::new(RefCell::new(Tab::new(&cc.egui_ctx, 0.0)));
         let browser = Rc::new(RefCell::new(
             Browser { tabs: vec![tab.clone()], current_tab: tab.clone(),
             chrome: Rc::new(RefCell::new(Chrome::new(Weak::new(), &cc.egui_ctx)))
@@ -72,6 +72,14 @@ impl Browser {
         browser
 
 
+    }
+
+    pub fn new_tab(&mut self, cc: &Context, url: Url)
+    {
+        let tab = Rc::new(RefCell::new(Tab::new(cc, HEIGHT - self.chrome.borrow().bottom())));
+        tab.borrow_mut().load(url);
+        self.tabs.push(tab.clone());
+        self.current_tab = tab.clone();
     }
 
     pub fn load_first_tab(&mut self, url: Url) {
@@ -185,37 +193,59 @@ impl eframe::App for Browser {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.chrome.borrow_mut().init(ctx);
 
-        let mut tab = self.current_tab.borrow_mut();
-        tab.update_layout(ctx);
-
+        {
+            let mut tab = self.current_tab.borrow_mut();
+            tab.update_layout(ctx);
+        }
         self.chrome.borrow_mut().draw(ctx, &*self.tabs, &self.current_tab);
 
-        if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)){
-            tab.scroll_down();
+        if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+            self.current_tab.borrow_mut().scroll_down();
         }
 
-        if ctx.input(|i| i.pointer.primary_clicked())
-        {
+        if ctx.input(|i| i.pointer.primary_clicked()) {
             let pos = ctx.input(|i| i.pointer.interact_pos()).unwrap();
-            tab.click(pos)
+
+            if pos.y < self.chrome.borrow().bottom() {
+                // 1. Get the action and drop the chrome borrow immediately
+                let action = self.chrome.borrow_mut().click(ctx, pos, self.tabs.len());
+
+                // 2. Now handle the action. 'self' is no longer borrowed!
+                if let Some(action) = action {
+                    match action {
+                        ChromeAction::NewTab => {
+                            self.new_tab(ctx, Url::new("https://browser.engineering").unwrap());
+                        }
+                        ChromeAction::SelectTab(index) => {
+                            self.current_tab = self.tabs[index].clone();
+                        }
+                    }
+                }
+            }  else {
+                let mut tab = self.current_tab.borrow_mut();
+                tab.click((pos - Vec2::new(0.0, self.chrome.borrow().bottom())));
+            }
         }
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(Color32::WHITE))
             .show(ctx, |ui| {
                 let painter = ui.painter();
+                let tab = self.current_tab.borrow();
                 let scroll_y = tab.scroll_y;
                 let chrome = self.chrome.borrow();
 
-                for cmd in &*chrome.draw_commands
-                {
-                    Self::draw_on_screen(painter, 0.0, &cmd);
-                }
+
 
                 for cmd in &*tab.draw_commands {
                     if (cmd.top() < scroll_y + HEIGHT) || (cmd.bottom() > scroll_y) {
                         Self::draw_on_screen(painter, scroll_y - self.chrome.borrow().bottom(), &cmd);
                     }
+                }
+
+                for cmd in &*chrome.draw_commands
+                {
+                    Self::draw_on_screen(painter, 0.0, &cmd);
                 }
             });
     }
