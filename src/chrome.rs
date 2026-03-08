@@ -19,6 +19,8 @@ pub struct Chrome {
     tabbar_bottom: f32,
     newtab_rect: Rect,
     pub(crate) draw_commands: Vec<DrawCommand>,
+    urlbar_top: f32,
+    urlbar_bottom: f32
 }
 pub enum ChromeAction {
     NewTab,
@@ -38,12 +40,14 @@ impl Chrome {
             tabbar_top: 0.0,
             tabbar_bottom: 10.0,
             newtab_rect: Rect::ZERO,
-            draw_commands: vec!()
+            draw_commands: vec!(),
+            urlbar_top: 0.0,
+            urlbar_bottom: 0.0,
         }
     }
     
     pub fn bottom(&self) -> f32 {
-        self.tabbar_bottom
+        self.urlbar_bottom
     }
 
     pub fn init(&mut self, ctx: &egui::Context) {

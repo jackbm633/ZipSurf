@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-native-tls = "0.2.13"
+native-tls = "0.2.18"
 egui = "0.33.3"
 eframe = "0.33.3"
-csscolorparser = "0.8.1"
+csscolorparser = "0.8.2"
 lazy_static = "1.5.0"
