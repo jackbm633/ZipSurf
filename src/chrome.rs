@@ -20,7 +20,9 @@ pub struct Chrome {
     newtab_rect: Rect,
     pub(crate) draw_commands: Vec<DrawCommand>,
     urlbar_top: f32,
-    urlbar_bottom: f32
+    urlbar_bottom: f32,
+    back_rect: Rect,
+    address_rect: Rect,
 }
 pub enum ChromeAction {
     NewTab,
@@ -43,6 +45,8 @@ impl Chrome {
             draw_commands: vec!(),
             urlbar_top: 0.0,
             urlbar_bottom: 0.0,
+            address_rect: Rect::ZERO,
+            back_rect: Rect::ZERO,
         }
     }
     
@@ -65,11 +69,20 @@ impl Chrome {
         self.urlbar_top = self.tabbar_bottom;
         self.urlbar_bottom = self.urlbar_top + line_height + 2.0 * self.padding;
         let plus_galley = ctx.fonts_mut(|f| f.layout("+".into(),
-                                                     font_id, Color32::BLACK, 0.0));
+                                                     font_id.clone(), Color32::BLACK, 0.0));
         let plus_width = plus_galley.size().x + 10.0;
         self.newtab_rect = Rect::from_two_pos(Pos2::new(self.padding, self.padding),
                                               Pos2::new(self.padding + plus_width,
-                                                        self.padding + self.line_height))
+                                                        self.padding + self.line_height));
+        let back_galley =  ctx.fonts_mut(|f| f.layout("<".into(),
+                                                     font_id, Color32::BLACK, 0.0));
+        let back_width = back_galley.size().x + 10.0;
+        self.back_rect = Rect::from_two_pos(Pos2::new(self.padding, self.padding),
+                                           Pos2::new(self.padding + back_width, self.padding + self.line_height));
+        self.address_rect = Rect::from_two_pos(Pos2::new(self.newtab_rect.right() + self.padding, self.padding),
+                                             Pos2::new(WIDTH - self.padding, self.padding + self.line_height));
+
+
 
     }
 
