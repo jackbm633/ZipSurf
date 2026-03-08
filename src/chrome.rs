@@ -62,6 +62,8 @@ impl Chrome {
         self.font_id = Some(font_id.clone());
         self.line_height = line_height;;
         self.tabbar_bottom = line_height + 10.0;
+        self.urlbar_top = self.tabbar_bottom;
+        self.urlbar_bottom = self.urlbar_top + line_height + 2.0 * self.padding;
         let plus_galley = ctx.fonts_mut(|f| f.layout("+".into(),
                                                      font_id, Color32::BLACK, 0.0));
         let plus_width = plus_galley.size().x + 10.0;
