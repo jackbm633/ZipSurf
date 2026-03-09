@@ -181,7 +181,7 @@ pub struct Tab {
     pub(crate) scroll_y: f32,
     nodes: Option<Rc<RefCell<HtmlNode>>>,
     document: Option<Rc<RefCell<LayoutNode>>>,
-    url: Option<Url>,
+    pub(crate) url: Option<Url>,
     pub(crate) tab_height: f32,
 }
 

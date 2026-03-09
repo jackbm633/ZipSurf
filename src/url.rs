@@ -199,6 +199,14 @@ impl Url {
 
         Url::new(&format!("{}://{}{}", self.scheme, self.host, normalised_path))
     }
+
+    pub fn to_string(&self) -> String {
+        format!("{}://{}{}{}", self.scheme, self.host, match self.port {
+            80 => "".to_string(),
+            443 => "".to_string(),
+            _ => format!(":{}", self.port),
+        }, self.path)
+    }
 }
 
 trait ReadWrite: Read + Write + Debug {}

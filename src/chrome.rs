@@ -179,27 +179,45 @@ impl Chrome {
                 ));
             }
 
-            self.draw_commands.push(DrawCommand::DrawOutline(
-                DrawOutline{
-                    rect: self.back_rect,
-                    color: Color32::BLACK,
-                    thickness: 1.0,
-                }
-            ));
-
-            self.draw_commands.push(DrawCommand::DrawText(
-                DrawText {
-                    x: self.back_rect.left() + self.padding,
-                    y: self.back_rect.top(),
-                    galley: ctx.fonts_mut(|f| f.layout_no_wrap("<".parse().unwrap(),
-                                                               self.font_id.clone().unwrap(), Color32::BLACK))
-                }
-            ))
-            
-
-
 
         }
+
+        self.draw_commands.push(DrawCommand::DrawOutline(
+            DrawOutline{
+                rect: self.back_rect,
+                color: Color32::BLACK,
+                thickness: 1.0,
+            }
+        ));
+
+        self.draw_commands.push(DrawCommand::DrawText(
+            DrawText {
+                x: self.back_rect.left() + self.padding,
+                y: self.back_rect.top(),
+                galley: ctx.fonts_mut(|f| f.layout_no_wrap("<".parse().unwrap(),
+                                                           self.font_id.clone().unwrap(), Color32::BLACK))
+            }
+        ));
+
+        self.draw_commands.push(DrawCommand::DrawOutline(
+            DrawOutline{
+                rect: self.address_rect,
+                color: Color32::BLACK,
+                thickness: 1.0,
+            }
+
+        ));
+
+        let url = current_tab.borrow().url.clone().unwrap().to_string();
+
+        self.draw_commands.push(DrawCommand::DrawText(
+            DrawText {
+                x: self.address_rect.left() + self.padding,
+                y: self.address_rect.top(),
+                galley: ctx.fonts_mut(|f| f.layout_no_wrap(url.parse().unwrap(),
+                                                           self.font_id.clone().unwrap(), Color32::BLACK))
+            }
+        ))
     }
 
     pub fn click(&mut self, ctx: &Context, pos: Pos2, tab_count: usize) -> Option<ChromeAction> {
