@@ -23,7 +23,14 @@ pub struct Chrome {
     urlbar_bottom: f32,
     back_rect: Rect,
     address_rect: Rect,
+    focus: Focus,
+    address_bar: String,
 }
+pub enum Focus {
+    None,
+    AddressBar,
+}
+
 pub enum ChromeAction {
     NewTab,
     SelectTab(usize),
@@ -46,6 +53,8 @@ impl Chrome {
             urlbar_bottom: 0.0,
             address_rect: Rect::ZERO,
             back_rect: Rect::ZERO,
+            focus: Focus::None,
+            address_bar: String::new(),
         }
     }
     
@@ -228,6 +237,10 @@ impl Chrome {
         if self.back_rect.contains(pos)
         {
             return Some(ChromeAction::GoBack);
+        }
+        if self.address_rect.contains(pos) {
+            self.focus = Focus::AddressBar;
+            self.address_bar.clear();
         }
 
         // Check if any existing tab was clicked
