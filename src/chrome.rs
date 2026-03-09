@@ -27,6 +27,7 @@ pub struct Chrome {
 pub enum ChromeAction {
     NewTab,
     SelectTab(usize),
+    GoBack,
 }
 
 
@@ -223,6 +224,10 @@ impl Chrome {
     pub fn click(&mut self, ctx: &Context, pos: Pos2, tab_count: usize) -> Option<ChromeAction> {
         if self.newtab_rect.contains(pos) {
             return Some(ChromeAction::NewTab);
+        }
+        if self.back_rect.contains(pos)
+        {
+            return Some(ChromeAction::GoBack);
         }
 
         // Check if any existing tab was clicked

@@ -219,6 +219,9 @@ impl eframe::App for Browser {
                         ChromeAction::SelectTab(index) => {
                             self.current_tab = self.tabs[index].clone();
                         }
+                        ChromeAction::GoBack => {
+                            self.current_tab.borrow_mut().go_back();
+                        }
                     }
                 }
             }  else {

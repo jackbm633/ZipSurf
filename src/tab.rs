@@ -183,6 +183,7 @@ pub struct Tab {
     document: Option<Rc<RefCell<LayoutNode>>>,
     pub(crate) url: Option<Url>,
     pub(crate) tab_height: f32,
+    history: Vec<Url>,
 }
 
 
@@ -202,6 +203,7 @@ impl Default for Tab {
             document: None,
             url: None,
             tab_height: 0.0,
+            history: vec![],
         }
     }
 }
@@ -340,6 +342,15 @@ impl Tab {
             Err(e) => {
                 eprintln!("Error loading URL: {}", e);
             }
+        }
+        self.history.push(url);
+    }
+
+    pub fn go_back(&mut self) {
+        if self.history.len() > 1
+        {
+            self.history.pop();
+            self.load(self.history.last().unwrap().clone());
         }
     }
 
