@@ -32,8 +32,6 @@ pub enum ChromeAction {
 
 impl Chrome {
     pub fn new(browser: Weak<RefCell<Browser>>, ctx: &egui::Context) -> Self {
-
-
         Self {
             browser,
             font_id: None,
@@ -77,10 +75,11 @@ impl Chrome {
         let back_galley =  ctx.fonts_mut(|f| f.layout("<".into(),
                                                      font_id, Color32::BLACK, 0.0));
         let back_width = back_galley.size().x + 10.0;
-        self.back_rect = Rect::from_two_pos(Pos2::new(self.padding, self.padding),
-                                           Pos2::new(self.padding + back_width, self.padding + self.line_height));
-        self.address_rect = Rect::from_two_pos(Pos2::new(self.newtab_rect.right() + self.padding, self.padding),
-                                             Pos2::new(WIDTH - self.padding, self.padding + self.line_height));
+        self.back_rect = Rect::from_two_pos(Pos2::new(self.padding, self.tabbar_bottom + self.padding),
+                                           Pos2::new(self.padding + back_width, self.tabbar_bottom + self.padding + self.line_height));
+        self.address_rect = Rect::from_two_pos(Pos2::new(self.newtab_rect.right() + self.padding, self.tabbar_bottom
+                                                          + self.padding),
+                                             Pos2::new(WIDTH - self.padding, self.tabbar_bottom + self.padding + self.line_height));
 
 
 
@@ -179,6 +178,23 @@ impl Chrome {
                     }
                 ));
             }
+
+            self.draw_commands.push(DrawCommand::DrawOutline(
+                DrawOutline{
+                    rect: self.back_rect,
+                    color: Color32::BLACK,
+                    thickness: 1.0,
+                }
+            ));
+
+            self.draw_commands.push(DrawCommand::DrawText(
+                DrawText {
+                    x: self.back_rect.left() + self.padding,
+                    y: self.back_rect.top(),
+                    galley: ctx.fonts_mut(|f| f.layout_no_wrap("<".parse().unwrap(),
+                                                               self.font_id.clone().unwrap(), Color32::BLACK))
+                }
+            ))
             
 
 
