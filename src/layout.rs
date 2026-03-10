@@ -23,6 +23,7 @@ const BLOCK_ELEMENTS: [&str; 37] =  [
     "legend", "details", "summary"
 ];
 
+
 /// Represents a node in the layout tree, which corresponds to an element in the
 /// HTML document and stores layout-related information for rendering.
 ///
@@ -554,7 +555,8 @@ impl LayoutNode {
                     y: final_pos.y,
                     galley: text_layout.galley.clone(),
                 }));
-            }
+            },
+            &LayoutNodeType::Input(_) => todo!()
         }
         cmds
     }
@@ -715,6 +717,7 @@ pub enum LayoutNodeType {
     Block(BlockLayout),
     Line(LineLayout),
     Text(TextLayout),
+    Input(InputLayout)
 }
 
 /// ```rust
@@ -1241,4 +1244,9 @@ impl<'a> BlockComposer<'a> {
             f.layout_no_wrap(" ".to_string(), self.layout.font_id.clone(), Color32::BLACK));
         self.layout.space_width = space_galley.size().x;
     }
+}
+
+#[derive(Debug)]
+struct InputLayout {
+
 }
