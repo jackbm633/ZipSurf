@@ -1,4 +1,4 @@
-﻿use std::cell::RefCell;
+﻿use std::cell::{RefCell, RefMut};
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use eframe::emath::Vec2;
@@ -24,8 +24,9 @@ pub struct Chrome {
     back_rect: Rect,
     address_rect: Rect,
     focus: Focus,
-    address_bar: String,
+    pub(crate) address_bar: String,
 }
+#[derive(PartialEq)]
 pub enum Focus {
     None,
     AddressBar,
@@ -220,17 +221,51 @@ impl Chrome {
 
         let url = current_tab.borrow().url.clone().unwrap().to_string();
 
-        self.draw_commands.push(DrawCommand::DrawText(
-            DrawText {
-                x: self.address_rect.left() + self.padding,
-                y: self.address_rect.top(),
-                galley: ctx.fonts_mut(|f| f.layout_no_wrap(url.parse().unwrap(),
-                                                           self.font_id.clone().unwrap(), Color32::BLACK))
-            }
-        ))
+        if self.focus == Focus::AddressBar {
+            let galley = ctx.fonts_mut(|f| f.layout_no_wrap(self.address_bar.parse().unwrap(),
+                                                            self.font_id.clone().unwrap(), Color32::BLACK));
+            self.draw_commands.push(DrawCommand::DrawText(
+                DrawText {
+                    x: self.address_rect.left() + self.padding,
+                    y: self.address_rect.top(),
+                    galley: ctx.fonts_mut(|f| galley.clone())
+                }
+            ));
+
+            let w =  galley.clone().size().x;
+            self.draw_commands.push(DrawCommand::DrawLine(
+                DrawLine {
+                    from: Pos2::new(self.address_rect.left() + w + self.padding, self.address_rect.top()),
+                    color: Color32::BLUE,
+                    thickness: 2.0,
+                    to: Pos2::new(self.address_rect.left() + w + self.padding, self.address_rect.bottom()),
+                }
+            ))
+        } else {
+            self.draw_commands.push(DrawCommand::DrawText(
+                DrawText {
+                    x: self.address_rect.left() + self.padding,
+                    y: self.address_rect.top(),
+                    galley: ctx.fonts_mut(|f| f.layout_no_wrap(url.parse().unwrap(),
+                                                               self.font_id.clone().unwrap(), Color32::BLACK))
+                }
+            ))
+        }
+
+    }
+
+    pub fn on_enter(&mut self, mut tab: RefMut<Tab>)
+    {
+        if (self.focus == Focus::AddressBar)
+        {
+            tab.load(Url::new(&*self.address_bar).unwrap());
+            self.focus = Focus::None;
+        }
+
     }
 
     pub fn click(&mut self, ctx: &Context, pos: Pos2, tab_count: usize) -> Option<ChromeAction> {
+        self.focus = Focus::None;
         if self.newtab_rect.contains(pos) {
             return Some(ChromeAction::NewTab);
         }
@@ -251,5 +286,9 @@ impl Chrome {
         }
 
         None
+    }
+    pub fn keypress(&mut self, keypress: &String)
+    {
+        self.address_bar.push_str(keypress);
     }
 }

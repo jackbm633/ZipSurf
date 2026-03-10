@@ -3,7 +3,7 @@ use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use eframe::emath::{Pos2, Rect};
 use eframe::epaint::{Color32, Stroke, StrokeKind};
-use egui::{Context, Painter, Vec2};
+use egui::{Context, Modifiers, Painter, Vec2};
 use crate::chrome::{Chrome, ChromeAction};
 use crate::layout::HEIGHT;
 use crate::tab::{DrawCommand, Tab};
@@ -203,6 +203,11 @@ impl eframe::App for Browser {
             self.current_tab.borrow_mut().scroll_down();
         }
 
+        if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+            self.chrome.borrow_mut().on_enter(self.current_tab.borrow_mut());
+        }
+
+
         if ctx.input(|i| i.pointer.primary_clicked()) {
             let pos = ctx.input(|i| i.pointer.interact_pos()).unwrap();
 
@@ -229,6 +234,14 @@ impl eframe::App for Browser {
                 tab.click((pos - Vec2::new(0.0, self.chrome.borrow().bottom())));
             }
         }
+
+        ctx.input(|i| {
+            for event in &i.events {
+                if let egui::Event::Text(text) = event {
+                    self.chrome.borrow_mut().keypress(text);
+                }
+            }
+        });
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(Color32::WHITE))
