@@ -571,7 +571,7 @@ impl LayoutNode {
     /// # Output Format
     /// The result is a list of drawing commands that downstream subsystems or renderers can consume
     /// to render the element onto a display or canvas.
-    pub fn paint(&self, offset: Vec2) -> Vec<DrawCommand> {
+    pub fn paint(&self) -> Vec<DrawCommand> {
         let mut cmds = Vec::<DrawCommand>::new();
 
         match &self.content {
@@ -617,7 +617,23 @@ impl LayoutNode {
                     galley: text_layout.galley.clone(),
                 }));
             },
-            &LayoutNodeType::Input(_) => todo!()
+            &LayoutNodeType::Input(_) => {
+                let bgcolor = self.node.borrow().style.get("background-color")
+                    .unwrap_or(&"transparent".to_string()).clone();
+                if let Ok(color_parse) = csscolorparser::parse(&bgcolor) {
+                    if let Ok(color) = Color32::from_hex(&color_parse.to_css_hex()) {
+                        if color.a() > 0 {
+                            let pos = self.position.unwrap_or(Vec2::ZERO);
+                            let size = self.size.unwrap_or(Vec2::ZERO);
+
+                            cmds.push(DrawCommand::DrawRect(DrawRect {
+                                rect: Rect::from_two_pos(pos.to_pos2(), (pos + size).to_pos2()),
+                                color,
+                            }));
+                        }
+                    }
+                }
+            }
         }
         cmds
     }
@@ -659,7 +675,7 @@ impl LayoutNode {
     /// ```
     pub fn paint_tree(node: Rc<RefCell<LayoutNode>>, display_list: &mut Vec<DrawCommand>, accumulated_offset: Vec2) {
         // 1. Ask the node to paint itself at the given offset
-        display_list.append(&mut node.borrow().paint(accumulated_offset));
+        display_list.append(&mut node.borrow().paint());
 
         // 2. Calculate the offset for the children
         let node_borrow = node.borrow();
