@@ -23,6 +23,7 @@ const BLOCK_ELEMENTS: [&str; 37] =  [
     "legend", "details", "summary"
 ];
 
+const INPUT_WIDTH_PX: f32 = 200.0;
 
 /// Represents a node in the layout tree, which corresponds to an element in the
 /// HTML document and stores layout-related information for rendering.
@@ -276,6 +277,66 @@ impl LayoutNode {
             display_list: Rc::new(RefCell::new(Vec::new())),
             position: None,
             size: None
+        }))
+    }
+
+    /// ```
+    /// Creates a new `LayoutNode` representing an input element.
+    ///
+    /// # Parameters
+    ///
+    /// - `node`: A reference-counted, mutable reference to an `HtmlNode` that represents
+    ///   the DOM node corresponding to this input element in the layout tree.
+    /// - `parent`: An optional `Rc<RefCell<LayoutNode>>` representing the parent layout node
+    ///   of the new input element in the layout tree. If no parent exists, this value is `None`.
+    /// - `previous`: An optional `Rc<RefCell<LayoutNode>>` representing the previous sibling
+    ///   layout node of the new input element in the layout tree. If no previous sibling exists, this value is `None`.
+    /// - `context`: A `Context` object used to provide additional information or configuration
+    ///   required when creating this layout node.
+    ///
+    /// # Returns
+    ///
+    /// A reference-counted, mutable `LayoutNode` containing the structure and properties
+    /// specific to the input element.
+    ///
+    /// # LayoutNode Properties
+    ///
+    /// - `children`: An initially empty vector (`vec![]`) meant to store child layout nodes.
+    /// - `content`: The content type of this layout node is set as `LayoutNodeType::Input`,
+    ///   which contains an `InputLayout` instance.
+    /// - `display_list`: A reference-counted, mutable vector intended to represent display-related
+    ///   instructions for rendering this layout node. Initially empty.
+    /// - `position`: The initial position of the layout node is set to `None`.
+    /// - `size`: The size is set to a vector with a fixed width of `INPUT_WIDTH_PX` and a height
+    ///   initialized to `0.0`.
+    ///
+    /// # Example Usage
+    ///
+    /// ```rust
+    /// let node = Rc::new(RefCell::new(HtmlNode::new(...)));
+    /// let parent = Some(Rc::new(RefCell::new(LayoutNode::new(...))));
+    /// let previous = None;
+    /// let context = Context::default();
+    ///
+    /// let input_layout_node = new_input(node, parent, previous, context);
+    /// ```
+    /// ```
+    pub fn new_input(node: Rc<RefCell<HtmlNode>>,
+                     parent: Option<Rc<RefCell<LayoutNode>>>,
+                     previous: Option<Rc<RefCell<LayoutNode>>>,
+                     context: Context) -> Rc<RefCell<LayoutNode>> {
+        Rc::new(RefCell::new(Self {
+            node,
+            parent,
+            children: vec![],
+            content: LayoutNodeType::Input(
+                InputLayout{
+                }
+            ),
+            previous,
+            display_list: Rc::new(RefCell::new(Vec::new())),
+            position: None,
+            size: Some(Vec2::new(INPUT_WIDTH_PX, 0.0))
         }))
     }
 
@@ -1248,5 +1309,6 @@ impl<'a> BlockComposer<'a> {
 
 #[derive(Debug)]
 struct InputLayout {
-
 }
+
+
