@@ -617,7 +617,7 @@ impl LayoutNode {
                     galley: text_layout.galley.clone(),
                 }));
             },
-            &LayoutNodeType::Input(_) => {
+            LayoutNodeType::Input(input) => {
                 let bgcolor = self.node.borrow().style.get("background-color")
                     .unwrap_or(&"transparent".to_string()).clone();
                 if let Ok(color_parse) = csscolorparser::parse(&bgcolor) {
@@ -633,6 +633,24 @@ impl LayoutNode {
                         }
                     }
                 }
+
+                let node_borrow = self.node.borrow();
+                let text = match &node_borrow.node_type {
+                    HtmlNodeType::Element(ele) if ele.tag == "input" => {
+                        ele.attributes.get("value").cloned().unwrap_or_default()
+                    }
+                    HtmlNodeType::Element(ele) if ele.tag == "button" && node_borrow.children.len() == 1 => {
+                        let first_child = node_borrow.children.first().unwrap().borrow();
+                        if let HtmlNodeType::Text(txt) = &first_child.node_type {
+                            txt.text.to_owned()
+                        } else {
+                            String::new()
+                        }
+                    }
+                    HtmlNodeType::Element(_) => String::new(),
+                    HtmlNodeType::Text(_) => panic!("Text node should not be here!"),
+                };
+
             }
         }
         cmds
