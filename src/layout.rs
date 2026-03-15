@@ -281,7 +281,7 @@ impl LayoutNode {
         }))
     }
 
-    
+
 
     /// Performs layout processing on a `LayoutNode` based on its type (`Block` or `Document`)
     /// and updates its display list accordingly.
@@ -640,7 +640,10 @@ impl LayoutNode {
     /// ```
     pub fn paint_tree(node: Rc<RefCell<LayoutNode>>, display_list: &mut Vec<DrawCommand>, accumulated_offset: Vec2) {
         // 1. Ask the node to paint itself at the given offset
-        display_list.append(&mut node.borrow().paint());
+        if (node.borrow().should_paint())
+        {
+            display_list.append(&mut node.borrow().paint());
+        }
 
         // 2. Calculate the offset for the children
         let node_borrow = node.borrow();
@@ -718,6 +721,21 @@ impl LayoutNode {
                 }
             }
             HtmlNodeType::Text(_) => {Inline}
+        }
+    }
+
+    pub fn should_paint(&self) -> bool {
+        match self.content {
+            LayoutNodeType::Document => true,
+            LayoutNodeType::Block(_) => {
+                matches!(self.node.borrow().node_type,
+                        HtmlNodeType::Element(ref ele) if ele.tag != "input") &&
+                    matches!(self.node.borrow().node_type,
+                        HtmlNodeType::Element(ref ele) if ele.tag != "button")
+            },
+            LayoutNodeType::Line(_) => true,
+            LayoutNodeType::Text(_) => true,
+            LayoutNodeType::Input(_) => true
         }
     }
 }
