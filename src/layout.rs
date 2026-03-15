@@ -1,4 +1,5 @@
 ﻿
+use crate::node::Element;
 use std::cell::RefCell;
 use std::rc::Rc;
 use crate::tab::{DrawCommand, DrawRect, DrawText};
@@ -280,65 +281,7 @@ impl LayoutNode {
         }))
     }
 
-    /// ```
-    /// Creates a new `LayoutNode` representing an input element.
-    ///
-    /// # Parameters
-    ///
-    /// - `node`: A reference-counted, mutable reference to an `HtmlNode` that represents
-    ///   the DOM node corresponding to this input element in the layout tree.
-    /// - `parent`: An optional `Rc<RefCell<LayoutNode>>` representing the parent layout node
-    ///   of the new input element in the layout tree. If no parent exists, this value is `None`.
-    /// - `previous`: An optional `Rc<RefCell<LayoutNode>>` representing the previous sibling
-    ///   layout node of the new input element in the layout tree. If no previous sibling exists, this value is `None`.
-    /// - `context`: A `Context` object used to provide additional information or configuration
-    ///   required when creating this layout node.
-    ///
-    /// # Returns
-    ///
-    /// A reference-counted, mutable `LayoutNode` containing the structure and properties
-    /// specific to the input element.
-    ///
-    /// # LayoutNode Properties
-    ///
-    /// - `children`: An initially empty vector (`vec![]`) meant to store child layout nodes.
-    /// - `content`: The content type of this layout node is set as `LayoutNodeType::Input`,
-    ///   which contains an `InputLayout` instance.
-    /// - `display_list`: A reference-counted, mutable vector intended to represent display-related
-    ///   instructions for rendering this layout node. Initially empty.
-    /// - `position`: The initial position of the layout node is set to `None`.
-    /// - `size`: The size is set to a vector with a fixed width of `INPUT_WIDTH_PX` and a height
-    ///   initialized to `0.0`.
-    ///
-    /// # Example Usage
-    ///
-    /// ```rust
-    /// let node = Rc::new(RefCell::new(HtmlNode::new(...)));
-    /// let parent = Some(Rc::new(RefCell::new(LayoutNode::new(...))));
-    /// let previous = None;
-    /// let context = Context::default();
-    ///
-    /// let input_layout_node = new_input(node, parent, previous, context);
-    /// ```
-    /// ```
-    pub fn new_input(node: Rc<RefCell<HtmlNode>>,
-                     parent: Option<Rc<RefCell<LayoutNode>>>,
-                     previous: Option<Rc<RefCell<LayoutNode>>>,
-                     context: Context) -> Rc<RefCell<LayoutNode>> {
-        Rc::new(RefCell::new(Self {
-            node,
-            parent,
-            children: vec![],
-            content: LayoutNodeType::Input(
-                InputLayout{
-                }
-            ),
-            previous,
-            display_list: Rc::new(RefCell::new(Vec::new())),
-            position: None,
-            size: Some(Vec2::new(INPUT_WIDTH_PX, 0.0))
-        }))
-    }
+    
 
     /// Performs layout processing on a `LayoutNode` based on its type (`Block` or `Document`)
     /// and updates its display list accordingly.
@@ -606,9 +549,6 @@ impl LayoutNode {
             },
 
             LayoutNodeType::Text(text_layout) => {
-                // Text is relative. We must add the accumulated offset.
-                // 'offset' passed here is (Block Abs Pos + Line Rel Pos).
-                // We add self.position (Text Rel Pos) to get final screen coordinates.
                 let final_pos =  self.position.unwrap_or(Vec2::ZERO);
 
                 cmds.push(DrawCommand::DrawText(DrawText {
@@ -650,6 +590,13 @@ impl LayoutNode {
                     HtmlNodeType::Element(_) => String::new(),
                     HtmlNodeType::Text(_) => panic!("Text node should not be here!"),
                 };
+
+                let pos = self.position.unwrap_or(Vec2::ZERO);
+                cmds.push(DrawCommand::DrawText(DrawText {
+                    x: pos.x + 5.0, // small horizontal padding
+                    y: pos.y,
+                    galley: input.galley.clone(),
+                }));
 
             }
         }
@@ -761,9 +708,12 @@ impl LayoutNode {
                         _ => false
                     }
                 }) { Block}
-                else if (!layout_node.borrow().children.is_empty()) {
-                     Inline
-                } else {
+                else if (!layout_node.borrow().children.is_empty() ||
+                    matches!(layout_node.borrow().node_type,
+                        HtmlNodeType::Element(ref ele) if ele.tag == "input")) {
+                    Inline
+                }
+                else {
                     Block
                 }
             }
@@ -1293,24 +1243,29 @@ impl<'a> BlockComposer<'a> {
             ProcessText(String),
         }
 
-        let action = {
+        let (action, node_ref) = {
             let borrowed = tree.borrow();
-            match &borrowed.node_type {
+            let action = match &borrowed.node_type {
                 HtmlNodeType::Element(ele) => Action::ProcessElement {
                     tag: ele.tag.clone().into(),
                     children: borrowed.children.clone(),
                 },
                 HtmlNodeType::Text(txt) => Action::ProcessText(txt.text.clone()),
-            }
+            };
+            (action, tree.clone())
         };
 
         match action {
             Action::ProcessElement { tag, children } => {
-                self.open_tag(tag.clone());
-                for child in children {
-                    self.recurse(child);
+                if tag == "input" || tag == "button" {
+                    self.input(node_ref);
+                } else {
+                    self.open_tag(tag.clone());
+                    for child in children {
+                        self.recurse(child);
+                    }
+                    self.close_tag(tag);
                 }
-                self.close_tag(tag);
             }
             Action::ProcessText(text) => {
                 for word in text.split_whitespace() {
@@ -1339,10 +1294,60 @@ impl<'a> BlockComposer<'a> {
             f.layout_no_wrap(" ".to_string(), self.layout.font_id.clone(), Color32::BLACK));
         self.layout.space_width = space_galley.size().x;
     }
+
+    fn input(&mut self, node: Rc<RefCell<HtmlNode>>) {
+        let node_borrow = node.borrow();
+        let text = match &node_borrow.node_type {
+            HtmlNodeType::Element(ele) if ele.tag == "input" => {
+                ele.attributes.get("value").cloned().unwrap_or_default()
+            }
+            HtmlNodeType::Element(ele) if ele.tag == "button" && node_borrow.children.len() == 1 => {
+                let first_child = node_borrow.children.first().unwrap().borrow();
+                if let HtmlNodeType::Text(txt) = &first_child.node_type {
+                    txt.text.to_owned()
+                } else {
+                    String::new()
+                }
+            }
+            _ => String::new(),
+        };
+
+        let color_str = node_borrow.style.get("color").unwrap_or(&"black".to_string()).clone();
+        let color = csscolorparser::parse(&color_str)
+            .ok()
+            .and_then(|c| Color32::from_hex(&c.to_css_hex()).ok())
+            .unwrap_or(Color32::BLACK);
+
+        self.update_font();
+        let galley = self.layout.context.fonts_mut(|f| {
+            f.layout_no_wrap(text, self.layout.font_id.clone(), color)
+        });
+
+        let input_width = INPUT_WIDTH_PX;
+        let input_height = galley.size().y + 4.0; // Add some padding
+
+        if self.layout.cursor_x + input_width > self.outer_size.unwrap().x {
+            self.flush_line();
+        }
+
+        let input_node = Rc::new(RefCell::new(LayoutNode {
+            node: node.clone(),
+            parent: Some(self.parent_ptr.clone()),
+            children: vec![],
+            previous: None,
+            content: LayoutNodeType::Input(InputLayout { galley }),
+            display_list: Rc::new(RefCell::new(Vec::new())),
+            position: Some(Vec2::new(self.layout.cursor_x, 0.0)),
+            size: Some(Vec2::new(input_width, input_height)),
+        }));
+
+        self.current_line_nodes.push(input_node);
+        self.layout.cursor_x += input_width + self.layout.space_width;
+    }
 }
 
 #[derive(Debug)]
 struct InputLayout {
+    pub galley: Arc<Galley>,
 }
-
 
