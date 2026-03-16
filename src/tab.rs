@@ -266,15 +266,17 @@ impl Tab {
         }
         let mut element = objs.last().map(|&e| e.borrow().node.clone());
         while let Some(current_element) = element {
-            let node = current_element.borrow();
-            match &node.node_type
-            {
-                HtmlNodeType::Element(ele) => {
+            let mut node = current_element.borrow_mut();
+            match node.node_type
+            { 
+                HtmlNodeType::Element(ref mut ele) => {
                     if ele.tag == "a" && ele.attributes.contains_key("href")
                     {
                         let url = self.url.clone().unwrap()
                             .resolve(ele.attributes.get("href").unwrap().clone().as_mut_str()).unwrap();
                         self.load(url);
+                    } else if ele.tag == "input" {
+                        ele.attributes.insert("value".to_string(), "".parse().unwrap());
                     }
                 }
                 HtmlNodeType::Text(_) => {}
