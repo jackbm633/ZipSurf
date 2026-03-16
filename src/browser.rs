@@ -189,6 +189,8 @@ impl Browser {
             }
         }
     }
+
+
 }
 
 impl eframe::App for Browser {
@@ -244,6 +246,10 @@ impl eframe::App for Browser {
             for event in &i.events {
                 if let egui::Event::Text(text) = event {
                     self.chrome.borrow_mut().keypress(text);
+                    if self.focus == Some("content".parse().unwrap()) {
+                        self.current_tab.borrow_mut().keypress(text);
+                    }
+                    
                 }
             }
         });

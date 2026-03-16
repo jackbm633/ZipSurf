@@ -513,6 +513,19 @@ impl Tab {
         }
     }
 
+    pub fn keypress(&mut self, keypress: &String)
+    {
+        if self.focus.is_some() {
+            match self.focus.clone().unwrap().borrow_mut().node_type {
+                HtmlNodeType::Element(ref mut e) => {
+                    e.attributes.get_mut("value").unwrap().push_str(keypress);
+                }
+                HtmlNodeType::Text(_) => {}
+            }
+            self.render();
+        }
+    }
+
 }
 
 
