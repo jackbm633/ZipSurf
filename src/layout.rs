@@ -2,11 +2,12 @@
 use crate::node::Element;
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::tab::{DrawCommand, DrawRect, DrawText};
+use crate::tab::{DrawCommand, DrawLine, DrawRect, DrawText};
 use crate::node::{HtmlNode, HtmlNodeType};
 use eframe::epaint::{Color32, FontFamily, FontId};
 use egui::{Context, Galley, Rect, TextBuffer, Vec2};
 use std::sync::Arc;
+use eframe::emath::Pos2;
 use crate::layout::LayoutMode::{Block, Inline};
 
 pub const HSTEP: f32 = 13.0;
@@ -597,6 +598,17 @@ impl LayoutNode {
                     y: pos.y,
                     galley: input.galley.clone(),
                 }));
+                if self.node.borrow().is_focused {
+                    let cx = pos.x + input.galley.size().x;
+                    cmds.push(DrawCommand::DrawLine(
+                        DrawLine {
+                            from: Pos2::new(cx, pos.y),
+                            to: Pos2::new(cx, pos.x + self.size.unwrap().y),
+                            color: Color32::BLACK,
+                            thickness: 1.0
+                        }
+                    ))
+                }
 
             }
         }
