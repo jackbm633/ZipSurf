@@ -40,7 +40,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::str::FromStr;
 use crate::layout::{LayoutNode, HEIGHT, VSTEP};
-use crate::node::{HtmlNodeType, HtmlNode};
+use crate::node::{HtmlNodeType, HtmlNode, Element};
 use crate::url::Url;
 use eframe::egui;
 use egui::{Color32, Context, Galley, Pos2, Rect, Stroke, Vec2};
@@ -184,6 +184,8 @@ pub struct Tab {
     pub(crate) url: Option<Url>,
     pub(crate) tab_height: f32,
     history: Vec<Url>,
+    rules: Vec<(Selector, HashMap<String, String>)>,
+    focus: Option<Rc<RefCell<HtmlNode>>>,
 }
 
 
@@ -204,6 +206,8 @@ impl Default for Tab {
             url: None,
             tab_height: 0.0,
             history: vec![],
+            rules: vec![],
+            focus: None,
         }
     }
 }
@@ -252,6 +256,7 @@ impl Tab {
     }
 
     pub(crate) fn click(&mut self, position: Pos2) {
+        self.focus = None;
         let mut new_pos = position.clone();
         new_pos.y += self.scroll_y;
 
@@ -264,26 +269,38 @@ impl Tab {
         if objs.len() == 0 {
             return;
         }
+
         let mut element = objs.last().map(|&e| e.borrow().node.clone());
+        let mut should_render = false;
+        let mut url_to_load = None;
+
         while let Some(current_element) = element {
-            let mut node = current_element.borrow_mut();
-            match node.node_type
-            { 
-                HtmlNodeType::Element(ref mut ele) => {
-                    if ele.tag == "a" && ele.attributes.contains_key("href")
-                    {
-                        let url = self.url.clone().unwrap()
-                            .resolve(ele.attributes.get("href").unwrap().clone().as_mut_str()).unwrap();
-                        self.load(url);
-                    } else if ele.tag == "input" {
-                        ele.attributes.insert("value".to_string(), "".parse().unwrap());
+            {
+                let mut node = current_element.borrow_mut();
+                match node.node_type {
+                    HtmlNodeType::Element(ref mut ele) => {
+                        if ele.tag == "a" && ele.attributes.contains_key("href") {
+                            url_to_load = Some(self.url.clone().unwrap()
+                                .resolve(ele.attributes.get("href").unwrap().clone().as_mut_str()).unwrap());
+                            break;
+                        } else if ele.tag == "input" {
+                            self.focus = Some(current_element.clone());
+                            ele.attributes.insert("value".to_string(), "".to_string());
+                            should_render = true;
+                            break;
+                        }
                     }
+                    HtmlNodeType::Text(_) => {}
                 }
-                HtmlNodeType::Text(_) => {}
             }
             element = current_element.borrow().parent.clone();
         }
 
+        if let Some(url) = url_to_load {
+            self.load(url);
+        } else if should_render {
+            self.render();
+        }
     }
 
     /// Fetches a web page, strips HTML tags, and stores the raw content.
@@ -306,7 +323,7 @@ impl Tab {
                 };
 
                 self.nodes =  Some(parser.parse());
-                let mut rules = DEFAULT_STYLE_SHEET.clone();
+                self.rules = DEFAULT_STYLE_SHEET.clone();
 
                 let links =
                     HtmlNode::tree_to_vec(self.nodes.clone().unwrap(), &mut vec![])
@@ -328,7 +345,7 @@ impl Tab {
                             let body = st.request();
                             match body {
                                 Ok(bd) => {
-                                    rules.append(&mut CssParser::new(&*bd).parse().unwrap_or(vec![]));
+                                    self.rules.append(&mut CssParser::new(&*bd).parse().unwrap_or(vec![]));
                                 }
                                 Err(_) => {}
                             }
@@ -336,16 +353,21 @@ impl Tab {
                         Err(_) => {}
                     }
                 }
-                rules.sort_by(|a, b|
+                self.rules.sort_by(|a, b|
                     Self::cascade_priority(a).cmp(&Self::cascade_priority(b)));
-                Self::style(Some(self.nodes.clone().unwrap()), &rules);
-                self.document = Some(LayoutNode::new_document(self.nodes.clone().unwrap()));
+                self.render();
             }
             Err(e) => {
                 eprintln!("Error loading URL: {}", e);
             }
         }
         self.history.push(url);
+    }
+
+    fn render(&mut self) {
+        Self::style(Some(self.nodes.clone().unwrap()), &self.rules);
+        self.document = Some(LayoutNode::new_document(self.nodes.clone().unwrap()));
+        self.draw_commands.clear()
     }
 
     pub fn go_back(&mut self) {

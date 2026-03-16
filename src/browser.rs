@@ -51,6 +51,7 @@ pub struct Browser {
     pub(crate) tabs: Vec<Rc<RefCell<Tab>>>,
     current_tab: Rc<RefCell<Tab>>,
     chrome: Rc<RefCell<Chrome>>,
+    focus: Option<String>
 }
 
 impl Browser {
@@ -61,8 +62,9 @@ impl Browser {
         let tab = Rc::new(RefCell::new(Tab::new(&cc.egui_ctx, 0.0)));
         let browser = Rc::new(RefCell::new(
             Browser { tabs: vec![tab.clone()], current_tab: tab.clone(),
-            chrome: Rc::new(RefCell::new(Chrome::new(Weak::new(), &cc.egui_ctx)))
-         }));
+            chrome: Rc::new(RefCell::new(Chrome::new(Weak::new(), &cc.egui_ctx))),
+                focus: None,
+            }));
 
         // 2. Now update Chrome with a real weak pointer to the browser
         let chrome = Rc::new(RefCell::new(Chrome::new(Rc::downgrade(&browser), &cc.egui_ctx)));
@@ -212,9 +214,10 @@ impl eframe::App for Browser {
             let pos = ctx.input(|i| i.pointer.interact_pos()).unwrap();
 
             if pos.y < self.chrome.borrow().bottom() {
+                self.focus = None;
                 // 1. Get the action and drop the chrome borrow immediately
                 let action = self.chrome.borrow_mut().click(ctx, pos, self.tabs.len());
-
+                
                 // 2. Now handle the action. 'self' is no longer borrowed!
                 if let Some(action) = action {
                     match action {
@@ -230,6 +233,8 @@ impl eframe::App for Browser {
                     }
                 }
             }  else {
+                self.focus = Some("content".parse().unwrap());
+                self.chrome.borrow_mut().blur();
                 let mut tab = self.current_tab.borrow_mut();
                 tab.click((pos - Vec2::new(0.0, self.chrome.borrow().bottom())));
             }

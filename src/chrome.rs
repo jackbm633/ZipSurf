@@ -291,4 +291,8 @@ impl Chrome {
     {
         self.address_bar.push_str(keypress);
     }
+    
+    pub fn blur(&mut self) {
+        self.focus = Focus::None;
+    }
 }
