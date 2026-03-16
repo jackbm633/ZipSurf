@@ -256,7 +256,9 @@ impl Tab {
     }
 
     pub(crate) fn click(&mut self, position: Pos2) {
-        self.focus = None;
+        if self.focus.is_some() {
+            self.focus.clone().unwrap().borrow_mut().is_focused = false;
+        }
         let mut new_pos = position.clone();
         new_pos.y += self.scroll_y;
 
@@ -286,7 +288,8 @@ impl Tab {
                         } else if ele.tag == "input" {
                             self.focus = Some(current_element.clone());
                             ele.attributes.insert("value".to_string(), "".to_string());
-                            should_render = true;
+                            current_element.borrow_mut().is_focused = true;
+                            self.render();
                             break;
                         }
                     }

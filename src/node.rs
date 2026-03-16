@@ -71,7 +71,7 @@ pub struct HtmlNode {
     pub(crate) children: Vec<Rc<RefCell<HtmlNode>>>,
     pub(crate) parent: Option<Rc<RefCell<HtmlNode>>>,
     pub(crate) style: HashMap<String, String>,
-    is_focused: bool,
+    pub(crate) is_focused: bool,
 }
 
 impl std::fmt::Debug for HtmlNode {
