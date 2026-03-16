@@ -70,7 +70,8 @@ pub struct HtmlNode {
     pub(crate) node_type: HtmlNodeType,
     pub(crate) children: Vec<Rc<RefCell<HtmlNode>>>,
     pub(crate) parent: Option<Rc<RefCell<HtmlNode>>>,
-    pub(crate) style: HashMap<String, String>
+    pub(crate) style: HashMap<String, String>,
+    is_focused: bool,
 }
 
 impl std::fmt::Debug for HtmlNode {
@@ -111,7 +112,8 @@ impl HtmlNode {
             node_type,
             children: vec![],
             parent,
-            style: HashMap::new()
+            style: HashMap::new(),
+            is_focused: false,
         }
     }
 
