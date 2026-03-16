@@ -1126,16 +1126,27 @@ impl<'a> BlockComposer<'a> {
         let mut max_descent: f32 = 0.0;
 
         for node in &self.current_line_nodes {
-            if let LayoutNodeType::Text(txt) = &node.borrow().content {
-                if let Some(row) = txt.galley.rows.first() {
-                    let ascent = row.row.glyphs.first().map(|g| g.font_ascent).unwrap_or(0.0);
-                    let height = row.row.glyphs.first().map(|g| g.font_height).unwrap_or(0.0);
+            match &node.borrow().content {
+                LayoutNodeType::Text(txt) => {
+                    if let Some(row) = txt.galley.rows.first() {
+                        let ascent = row.row.glyphs.first().map(|g| g.font_ascent).unwrap_or(0.0);
+                        let height = row.row.glyphs.first().map(|g| g.font_height).unwrap_or(0.0);
 
+                        if ascent > max_ascent { max_ascent = ascent; }
+
+                        let descent = height - ascent;
+                        if descent > max_descent { max_descent = descent; }
+                    }
+                }
+                LayoutNodeType::Input(input) => {
+                    // For inputs/buttons, we can use the galley size or the node's stored size
+                    let height = input.galley.size().y;
+                    let ascent = height * 0.8; // Rough estimate for vertical alignment if no glyph info
                     if ascent > max_ascent { max_ascent = ascent; }
-
                     let descent = height - ascent;
                     if descent > max_descent { max_descent = descent; }
                 }
+                _ => {}
             }
         }
 
@@ -1165,31 +1176,35 @@ impl<'a> BlockComposer<'a> {
             l.max_descent = max_descent;
         }
 
-        // 4. Update Children (Text Nodes) with Absolute Positions
-        for text_node in &self.current_line_nodes {
-            let mut txt = text_node.borrow_mut();
+        // 4. Update Children (Text & Input Nodes) with Absolute Positions
+        for child_node in &self.current_line_nodes {
+            let mut child = child_node.borrow_mut();
 
             // Parent pointer update
-            txt.parent = Some(line_node.clone());
+            child.parent = Some(line_node.clone());
 
-            // Get the relative X we stored temporarily in word()
-            let relative_x = txt.position.unwrap().x;
+            // Get the relative X we stored temporarily in word() or input()
+            let relative_x = child.position.unwrap().x;
 
-            // Calculate Text Ascent for alignment
+            // Calculate vertical alignment offset
             let mut ascent = 0.0;
-            if let LayoutNodeType::Text(t) = &txt.content {
-                if let Some(row) = t.galley.rows.first() {
-                    ascent = row.row.glyphs.first().map(|g| g.font_ascent).unwrap_or(0.0);
+            match &child.content {
+                LayoutNodeType::Text(t) => {
+                    if let Some(row) = t.galley.rows.first() {
+                        ascent = row.row.glyphs.first().map(|g| g.font_ascent).unwrap_or(0.0);
+                    }
                 }
+                LayoutNodeType::Input(i) => {
+                    ascent = i.galley.size().y * 0.8;
+                }
+                _ => {}
             }
 
             // Calculate Final Absolute Position
-            // X = Block X + Word Relative X
-            // Y = Line Y + (Baseline Offset - Font Ascent)
             let abs_x = block_pos.x + relative_x;
             let abs_y = line_abs_pos.y + (baseline_offset - ascent);
 
-            txt.position = Some(Vec2::new(abs_x, abs_y));
+            child.position = Some(Vec2::new(abs_x, abs_y));
         }
 
         // Move children into the line
