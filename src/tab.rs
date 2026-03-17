@@ -277,25 +277,58 @@ impl Tab {
         let mut url_to_load = None;
 
         while let Some(current_element) = element {
+            let mut action_to_take = None; // Track what to do after borrow is released
+
             {
                 let mut node = current_element.borrow_mut();
                 match node.node_type {
                     HtmlNodeType::Element(ref mut ele) => {
                         if ele.tag == "a" && ele.attributes.contains_key("href") {
-                            url_to_load = Some(self.url.clone().unwrap()
-                                .resolve(ele.attributes.get("href").unwrap().clone().as_mut_str()).unwrap());
+                            let url = self.url.as_ref().unwrap()
+                                .resolve(ele.attributes.get("href").unwrap().clone().as_mut_str()).unwrap();
+                            url_to_load = Some(url);
                             break;
                         } else if ele.tag == "input" {
-                            self.focus = Some(current_element.clone());
                             ele.attributes.insert("value".to_string(), "".to_string());
-                            current_element.borrow_mut().is_focused = true;
-                            self.render();
-                            break;
+                            node.is_focused = true;
+                            action_to_take = Some("input");
+                        } else if ele.tag == "button" {
+                            action_to_take = Some("button");
                         }
                     }
                     HtmlNodeType::Text(_) => {}
                 }
             }
+
+            // Handle actions after the 'node' borrow is dropped
+            match action_to_take {
+                Some("input") => {
+                    self.focus = Some(current_element.clone());
+                    self.render();
+                    break;
+                }
+                Some("button") => {
+                    let mut elt = Some(current_element.clone());
+                    while let Some(elt_rc) = elt {
+                        let is_form_with_action = {
+                            let elt_borrow = elt_rc.borrow();
+                            if let HtmlNodeType::Element(elem) = &elt_borrow.node_type {
+                                elem.tag == "form" && elem.attributes.contains_key("action")
+                            } else {
+                                false
+                            }
+                        };
+
+                        if is_form_with_action {
+                            return self.submit_form(elt_rc);
+                        }
+                        elt = elt_rc.borrow().parent.clone();
+                    }
+                }
+                _ => {}
+            }
+
+            if url_to_load.is_some() { break; }
             element = current_element.borrow().parent.clone();
         }
 
@@ -529,6 +562,9 @@ impl Tab {
         }
     }
 
+    fn submit_form(&self, p0: Rc<RefCell<HtmlNode>>) {
+        todo!()
+    }
 }
 
 
