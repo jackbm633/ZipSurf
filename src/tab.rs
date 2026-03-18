@@ -562,8 +562,32 @@ impl Tab {
         }
     }
 
-    fn submit_form(&self, p0: Rc<RefCell<HtmlNode>>) {
-        todo!()
+    fn submit_form(&self, html_node: Rc<RefCell<HtmlNode>>) {
+        let mut binding = vec![];
+        let inputs: Vec<_> = HtmlNode::tree_to_vec(html_node, &mut binding)
+            .iter()
+            .filter(|n| {
+                match &n.borrow().node_type {
+                    HtmlNodeType::Element(e) => {
+                        e.tag == "input" && e.attributes.contains_key("name")
+                    }
+                    HtmlNodeType::Text(_) => {false}
+                }
+            })
+        .collect();
+
+        let mut body: String = "".into();
+        for input in inputs {
+            match &input.borrow().node_type {
+                HtmlNodeType::Element(e) => {
+                    let name = &e.attributes["name"];
+                    let value = e.attributes.get("value").unwrap_or(&"".to_string()).clone();
+                    body.push_str( &format!("&{}={}", name, value));
+                }
+                HtmlNodeType::Text(_) => {}
+            }
+        }
+        body.remove(0);
     }
 }
 
