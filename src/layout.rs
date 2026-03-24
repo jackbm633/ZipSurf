@@ -599,11 +599,11 @@ impl LayoutNode {
                     galley: input.galley.clone(),
                 }));
                 if self.node.borrow().is_focused {
-                    let cx = pos.x + input.galley.size().x;
+                    let cx = pos.x + 5.0 + input.galley.size().x; // Added 5.0 padding here
                     cmds.push(DrawCommand::DrawLine(
                         DrawLine {
                             from: Pos2::new(cx, pos.y),
-                            to: Pos2::new(cx, pos.x + self.size.unwrap().y),
+                            to: Pos2::new(cx, pos.y + self.size.unwrap().y), // Changed pos.x to pos.y
                             color: Color32::BLACK,
                             thickness: 1.0
                         }

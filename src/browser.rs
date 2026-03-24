@@ -183,7 +183,10 @@ impl Browser {
             }
             DrawCommand::DrawLine(line) => {
                 painter.line(
-                    vec![line.from, line.to],
+                    vec![
+                        Pos2::new(line.from.x, line.from.y - scroll_y),
+                        Pos2::new(line.to.x, line.to.y - scroll_y)
+                    ],
                     Stroke::new(line.thickness, line.color)
                 );
             }

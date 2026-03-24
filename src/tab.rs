@@ -187,6 +187,7 @@ pub struct Tab {
     history: Vec<Url>,
     rules: Vec<(Selector, HashMap<String, String>)>,
     focus: Option<Rc<RefCell<HtmlNode>>>,
+    needs_redraw: bool
 }
 
 
@@ -209,6 +210,7 @@ impl Default for Tab {
             history: vec![],
             rules: vec![],
             focus: None,
+            needs_redraw: true,
         }
     }
 }
@@ -232,14 +234,14 @@ impl Tab {
 
 
     pub fn update_layout(&mut self, ctx: &egui::Context) {
-        if self.draw_commands.is_empty() {
+        if self.needs_redraw {
             match self.document.as_mut() {
                 None => { panic!("Browser document not initialized.") },
                 Some(doc) => {
                     LayoutNode::layout(doc.clone(), ctx.clone());
                     self.draw_commands = vec![];
                     LayoutNode::paint_tree(doc.clone(), &mut self.draw_commands, Vec2::ZERO);
-
+                    self.needs_redraw = false;
                 }
             }
         }
@@ -379,7 +381,7 @@ impl Tab {
                     let style_url = url.resolve(link.clone().as_mut_str());
                     match style_url {
                         Ok(st) => {
-                            let body = st.request();
+                            let body = st.request(None);
                             match body {
                                 Ok(bd) => {
                                     self.rules.append(&mut CssParser::new(&*bd).parse().unwrap_or(vec![]));
@@ -404,7 +406,7 @@ impl Tab {
     fn render(&mut self) {
         Self::style(Some(self.nodes.clone().unwrap()), &self.rules);
         self.document = Some(LayoutNode::new_document(self.nodes.clone().unwrap()));
-        self.draw_commands.clear()
+        self.needs_redraw = true;
     }
 
     pub fn go_back(&mut self) {
@@ -564,6 +566,15 @@ impl Tab {
     }
 
     fn submit_form(&mut self, html_node: Rc<RefCell<HtmlNode>>) {
+
+        let mut action = "".to_string();
+        match &html_node.borrow().node_type {
+            HtmlNodeType::Element(e) => {
+                action = e.attributes.get("action").unwrap().clone();
+            }
+            HtmlNodeType::Text(_) => {}
+        }
+
         let mut binding = vec![];
         let inputs: Vec<_> = HtmlNode::tree_to_vec(html_node, &mut binding)
             .iter()
@@ -578,14 +589,12 @@ impl Tab {
         .collect();
 
         let mut body: String = "".into();
-        let mut action: String = "".into();
         for input in inputs {
             match &input.borrow().node_type {
                 HtmlNodeType::Element(e) => {
                     let name = utf8_percent_encode(&e.attributes["name"], NON_ALPHANUMERIC);
 
                     let value = utf8_percent_encode(e.attributes.get("value").map(|v| v.as_str()).unwrap_or_else(|| ""), NON_ALPHANUMERIC);
-                    let action = e.attributes.get("action").unwrap().clone();
                     body.push_str( &format!("&{}={}", name, value));
                 }
                 HtmlNodeType::Text(_) => {}

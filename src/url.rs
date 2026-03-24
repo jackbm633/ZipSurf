@@ -73,7 +73,7 @@ impl Url {
             },
             path: path,
             port: if host.contains(':') {
-                host.splitn(2, ':')
+                host.trim().splitn(2, ':')
                     .collect::<Vec<_>>()[1]
                     .parse::<u16>()
                     .map_err(|_| "Invalid port number".to_string())?
@@ -116,12 +116,12 @@ impl Url {
                 Some(_) => "POST",
                 None => "GET",
             };
-            
-            let request = format!("{} {} HTTP/1.0\r\nHost: {}{}\r\n\r\n", method, self.path, self.host,
+
+            let request = format!("{} {} HTTP/1.0\r\nHost: {}{}\r\n\r\n{}", method, self.path, self.host,
             match body {
-                Some(body) => format!("\r\nContent-Length: {}\r\n\r\n{}", body.as_bytes().len(), body),
+                Some(ref body) => format!("\r\nContent-Length: {}\r\n\r\n{}", body.as_bytes().len(), body),
                 None => "".to_string(),
-            });
+            }, body.unwrap_or_else(|| "".to_string()));
             let request_result = stream.write_all(request.as_bytes());
             if let Err(e) = request_result {
                 return Err(format!("Failed to send request: {}", e));
@@ -206,7 +206,7 @@ impl Url {
         
         let normalised_path = format!("/{}", segments.join("/"));
 
-        Url::new(&format!("{}://{}{}", self.scheme, self.host, normalised_path))
+        Url::new(&format!("{}://{}{}{}", self.scheme, self.host, if self.port != 80 || self.port != 443 {format!(":{}", self.port)} else { "".parse().unwrap() }, normalised_path))
     }
 
     pub fn to_string(&self) -> String {
