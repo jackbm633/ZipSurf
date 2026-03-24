@@ -112,7 +112,16 @@ impl Url {
                 Box::new(tcp_stream)
             };
 
-            let request = format!("GET {} HTTP/1.0\r\nHost: {}\r\n\r\n", self.path, self.host);
+            let method = match body {
+                Some(_) => "POST",
+                None => "GET",
+            };
+            
+            let request = format!("{} {} HTTP/1.0\r\nHost: {}{}\r\n\r\n", method, self.path, self.host,
+            match body {
+                Some(body) => format!("\r\nContent-Length: {}\r\n\r\n{}", body.as_bytes().len(), body),
+                None => "".to_string(),
+            });
             let request_result = stream.write_all(request.as_bytes());
             if let Err(e) = request_result {
                 return Err(format!("Failed to send request: {}", e));
