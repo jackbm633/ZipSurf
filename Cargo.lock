@@ -11,6 +11,7 @@ dependencies = [
  "egui",
  "lazy_static",
  "native-tls",
+ "percent-encoding",
 ]
 
 [[package]]

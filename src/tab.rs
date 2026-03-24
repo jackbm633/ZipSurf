@@ -47,6 +47,7 @@ use egui::{Color32, Context, Galley, Pos2, Rect, Stroke, Vec2};
 use std::sync::Arc;
 use eframe::epaint::StrokeKind;
 use lazy_static::lazy_static;
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use crate::css_parser::CssParser;
 use crate::html_parser::HtmlParser;
 use crate::selector::Selector;
@@ -580,8 +581,9 @@ impl Tab {
         for input in inputs {
             match &input.borrow().node_type {
                 HtmlNodeType::Element(e) => {
-                    let name = &e.attributes["name"];
-                    let value = e.attributes.get("value").unwrap_or(&"".to_string()).clone();
+                    let name = utf8_percent_encode(&e.attributes["name"], NON_ALPHANUMERIC);
+
+                    let value = utf8_percent_encode(e.attributes.get("value").map(|v| v.as_str()).unwrap_or_else(|| ""), NON_ALPHANUMERIC);
                     body.push_str( &format!("&{}={}", name, value));
                 }
                 HtmlNodeType::Text(_) => {}
