@@ -79,13 +79,13 @@ impl Browser {
     pub fn new_tab(&mut self, cc: &Context, url: Url)
     {
         let tab = Rc::new(RefCell::new(Tab::new(cc, HEIGHT - self.chrome.borrow().bottom())));
-        tab.borrow_mut().load(url);
+        tab.borrow_mut().load(url, None);
         self.tabs.push(tab.clone());
         self.current_tab = tab.clone();
     }
 
     pub fn load_first_tab(&mut self, url: Url) {
-        self.tabs[0].borrow_mut().load(url);
+        self.tabs[0].borrow_mut().load(url, None);
         self.tabs[0].borrow_mut().tab_height = HEIGHT - self.chrome.borrow().bottom();
     }
 

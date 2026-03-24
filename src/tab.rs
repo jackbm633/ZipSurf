@@ -334,7 +334,7 @@ impl Tab {
         }
 
         if let Some(url) = url_to_load {
-            self.load(url);
+            self.load(url, None);
         } else if should_render {
             self.render();
         }
@@ -348,11 +348,11 @@ impl Tab {
     ///
     /// # Errors
     /// Network failures or request timeouts are logged to `stderr`.
-    pub fn load(&mut self, url: Url) {
+    pub fn load(&mut self, url: Url, body: Option<String>) {
         self.url = Some(url.clone());
         self.draw_commands.clear();
         self.scroll_y = 0.0;
-        match url.request() {
+        match url.request(body) {
             Ok(body) => {
                 let mut parser = HtmlParser {
                     body: body.clone(),
@@ -411,7 +411,7 @@ impl Tab {
         if self.history.len() > 1
         {
             self.history.pop();
-            self.load(self.history.last().unwrap().clone());
+            self.load(self.history.last().unwrap().clone(), None);
         }
     }
 
@@ -563,7 +563,7 @@ impl Tab {
         }
     }
 
-    fn submit_form(&self, html_node: Rc<RefCell<HtmlNode>>) {
+    fn submit_form(&mut self, html_node: Rc<RefCell<HtmlNode>>) {
         let mut binding = vec![];
         let inputs: Vec<_> = HtmlNode::tree_to_vec(html_node, &mut binding)
             .iter()
@@ -578,18 +578,23 @@ impl Tab {
         .collect();
 
         let mut body: String = "".into();
+        let mut action: String = "".into();
         for input in inputs {
             match &input.borrow().node_type {
                 HtmlNodeType::Element(e) => {
                     let name = utf8_percent_encode(&e.attributes["name"], NON_ALPHANUMERIC);
 
                     let value = utf8_percent_encode(e.attributes.get("value").map(|v| v.as_str()).unwrap_or_else(|| ""), NON_ALPHANUMERIC);
+                    let action = e.attributes.get("action").unwrap().clone();
                     body.push_str( &format!("&{}={}", name, value));
                 }
                 HtmlNodeType::Text(_) => {}
             }
         }
         body.remove(0);
+
+        let url = self.url.clone().unwrap().resolve(&mut *action).unwrap();
+        self.load(url, Some(body));
     }
 }
 

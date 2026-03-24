@@ -98,7 +98,7 @@ impl Url {
     /// # Returns
     /// * `Ok(String)` - The decrypted response body.
     /// * `Err(String)` - If the connection, TLS handshake, or parsing fails.
-    pub fn request(&self) -> Result<String, String> {
+    pub fn request(&self, body: Option<String>) -> Result<String, String> {
         // Connect to the host on port 80
         if let Ok(tcp_stream) = TcpStream::connect(format!("{}:{}", self.host, self.port)) {
             let mut stream: Box<dyn ReadWrite> = if self.scheme == "https" {

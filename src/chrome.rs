@@ -258,7 +258,7 @@ impl Chrome {
     {
         if (self.focus == Focus::AddressBar)
         {
-            tab.load(Url::new(&*self.address_bar).unwrap());
+            tab.load(Url::new(&*self.address_bar).unwrap(), None);
             self.focus = Focus::None;
         }
 
