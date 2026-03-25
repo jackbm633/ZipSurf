@@ -48,6 +48,7 @@ use std::sync::Arc;
 use eframe::epaint::StrokeKind;
 use lazy_static::lazy_static;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use rquickjs::Runtime;
 use crate::css_parser::CssParser;
 use crate::html_parser::HtmlParser;
 use crate::selector::Selector;
@@ -377,6 +378,18 @@ impl Tab {
                         HtmlNodeType::Text(_) => {None}
                     }).collect::<Vec<String>>();
 
+                let scripts =
+                    HtmlNode::tree_to_vec(self.nodes.clone().unwrap(), &mut vec![])
+                        .iter().filter_map(|p| match &p.borrow().node_type {
+                        HtmlNodeType::Element(e) => {
+                            if e.tag == "script" && e.attributes.contains_key("src") {
+                                return Some(e.attributes.get("src").unwrap().to_string())
+                            }
+                            None
+                        }
+                        HtmlNodeType::Text(_) => {None}
+                    }).collect::<Vec<String>>();
+
                 for link in links {
                     let style_url = url.resolve(link.clone().as_mut_str());
                     match style_url {
@@ -385,6 +398,31 @@ impl Tab {
                             match body {
                                 Ok(bd) => {
                                     self.rules.append(&mut CssParser::new(&*bd).parse().unwrap_or(vec![]));
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                        Err(_) => {}
+                    }
+                }
+
+                for script in scripts {
+                    let script_url = url.resolve(script.clone().as_mut_str());
+                    match script_url {
+                        Ok(st) => {
+                            let body = st.request(None);
+                            match body {
+                                Ok(bd) => {
+                                    // 1. Create a runtime
+                                    let rt = Runtime::new().unwrap();
+                                    // 2. Create a context
+                                    let ctx = rquickjs::Context::full(&rt).unwrap();
+
+                                    // 3. Evaluate JS within the context
+                                    ctx.with(|ctx| {
+                                        let val: i32 = ctx.eval(bd).unwrap_or(-1);
+                                        println!("Result: {:?}", val); // Outputs: Result: 7
+                                    })
                                 }
                                 Err(_) => {}
                             }
