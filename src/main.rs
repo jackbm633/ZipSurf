@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::env::args;
 use std::rc::Rc;
-use rquickjs::{Context, Runtime};
 use crate::{url::Url};
 use crate::browser::Browser;
 
