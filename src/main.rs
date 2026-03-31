@@ -14,6 +14,7 @@ mod selector;
 mod browser;
 mod chrome;
 mod rect;
+mod js_context;
 
 fn main() -> eframe::Result<(), eframe::Error> {
 

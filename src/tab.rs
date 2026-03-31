@@ -51,6 +51,7 @@ use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use rquickjs::Runtime;
 use crate::css_parser::CssParser;
 use crate::html_parser::HtmlParser;
+use crate::js_context::JsContext;
 use crate::selector::Selector;
 
 
@@ -405,6 +406,7 @@ impl Tab {
                         Err(_) => {}
                     }
                 }
+                let context = JsContext::new();
 
                 for script in scripts {
                     let script_url = url.resolve(script.clone().as_mut_str());
@@ -413,16 +415,7 @@ impl Tab {
                             let body = st.request(None);
                             match body {
                                 Ok(bd) => {
-                                    // 1. Create a runtime
-                                    let rt = Runtime::new().unwrap();
-                                    // 2. Create a context
-                                    let ctx = rquickjs::Context::full(&rt).unwrap();
-
-                                    // 3. Evaluate JS within the context
-                                    ctx.with(|ctx| {
-                                        let val: i32 = ctx.eval(bd).unwrap_or(-1);
-                                        println!("Result: {:?}", val); // Outputs: Result: 7
-                                    })
+                                    context.run(&*bd);
                                 }
                                 Err(_) => {}
                             }
