@@ -1,9 +1,11 @@
-﻿use std::cell::RefCell;
+﻿use std::any::Any;
+use std::cell::RefCell;
 use std::rc::Rc;
 use lazy_static::lazy_static;
 use rquickjs::{Context, Error, Function};
 use rquickjs::Runtime;
 use crate::css_parser::CssParser;
+use crate::node::HtmlNode;
 use crate::tab::Tab;
 
 lazy_static! {
@@ -12,7 +14,8 @@ lazy_static! {
 pub struct JsContext {
     runtime: Runtime,
     context: Context,
-    tab: Rc<RefCell<Tab>>
+    tab: Rc<RefCell<Tab>>,
+    nodes: Rc<RefCell<Vec<Rc<RefCell<HtmlNode>>>>>
 }
 
 impl JsContext {
@@ -21,18 +24,44 @@ impl JsContext {
         // Full context includes standard library features (JSON, etc.)
         let context = Context::full(&runtime).expect("Failed to create JS context");
 
+        let tab_clone = tab.clone();
+        let nodes = Rc::new(RefCell::new(Vec::new()));
+        let nodes_clone = nodes.clone();
+
         context.with(|ctx| {
+            let tab_for_query = tab_clone.clone();
+            let nodes_for_query = nodes_clone.clone();
+
             let log = |str: String| {println!("{}", str)};
-            let querySelectorAll = |selector: String| {
-                let selector = CssParser::new(selector.as_str()).selector().unwrap();
+            let query_selector_all = move |selector_str: String| {
+                let selector = CssParser::new(selector_str.as_str()).selector().unwrap();
+                let nodes_ref = tab_for_query.borrow().nodes.clone();
+
+                if let Some(root) = nodes_ref {
+                    let mut elements = vec![];
+                    HtmlNode::tree_to_vec(root, &mut elements);
+
+                    let mut matched_indices = vec![];
+                    for nd in elements {
+                        if selector.matches(nd.clone()) {
+                            let mut registry = nodes_for_query.borrow_mut();
+                            matched_indices.push(registry.len());
+                            registry.push(nd);
+                        }
+                    }
+
+                    return matched_indices;
+                }
+                vec![]
             };
             ctx.globals().set("rustLog", Function::new(ctx.clone(), log).unwrap()).unwrap();
-            ctx.globals().set("rustQuerySelectorAll", Function::new(ctx.clone(), querySelectorAll).unwrap()).unwrap();
+
+            ctx.globals().set("rustQuerySelectorAll", Function::new(ctx.clone(), query_selector_all).unwrap()).unwrap();
 
             let _: () = ctx.eval(RUNTIME_JS.as_str()).expect("JS Execution failed");
         });
 
-        Self { runtime, context, tab }
+        Self { runtime, context, tab, nodes }
     }
 
     /// Generic evaluation with error handling

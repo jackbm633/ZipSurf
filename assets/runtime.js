@@ -14,5 +14,8 @@ globalThis.console = {
 };
 
 globalThis.document = {
-    querySelectorAll: (s) => rustQuerySelectorAll(s)
+    querySelectorAll: (s) => {
+        let handles = rustQuerySelectorAll(s);
+        return handles.map(h => new Node(h));
+    }
 };

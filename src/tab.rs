@@ -182,7 +182,7 @@ pub struct Tab {
     pub(crate) draw_commands: Vec<DrawCommand>,
     /// The current vertical scroll offset in points.
     pub(crate) scroll_y: f32,
-    nodes: Option<Rc<RefCell<HtmlNode>>>,
+    pub(crate) nodes: Option<Rc<RefCell<HtmlNode>>>,
     document: Option<Rc<RefCell<LayoutNode>>>,
     pub(crate) url: Option<Url>,
     pub(crate) tab_height: f32,
