@@ -12,10 +12,11 @@ globalThis.console = {
         rustLog("ERROR: " + args.join(' '));
     }
 };
+function Node(handle) { this.handle = handle; }
 
 globalThis.document = {
     querySelectorAll: (s) => {
         let handles = rustQuerySelectorAll(s);
-        return handles.map(h => new Node(h));
+        return handles.map(function(h) { return new Node(h) });
     }
 };
