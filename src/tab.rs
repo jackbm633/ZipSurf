@@ -580,6 +580,7 @@ impl Tab {
     pub fn keypress(&mut self, keypress: &String)
     {
         if self.focus.is_some() {
+            self.js.as_ref().unwrap().dispatch_event("keydown", self.focus.clone().unwrap());
             match self.focus.clone().unwrap().borrow_mut().node_type {
                 HtmlNodeType::Element(ref mut e) => {
                     e.attributes.get_mut("value").unwrap().push_str(keypress);

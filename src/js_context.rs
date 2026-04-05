@@ -24,10 +24,6 @@ impl JsContext {
             nodes.push(node);
             nodes.len() - 1
         });
-
-        self.context.with(|ctx| {
-            let _: () = ctx.eval(format!("dispatchEvent('{}', {})", event_type, index).as_str()).expect("JS Evaluation failed");
-        });
     }
 }
 
