@@ -1,29 +1,38 @@
-﻿use lazy_static::lazy_static;
+﻿use std::cell::RefCell;
+use std::rc::Rc;
+use lazy_static::lazy_static;
 use rquickjs::{Context, Error, Function};
 use rquickjs::Runtime;
+use crate::css_parser::CssParser;
+use crate::tab::Tab;
+
 lazy_static! {
     static ref RUNTIME_JS: String = include_str!("../assets/runtime.js").to_string();
 }
 pub struct JsContext {
     runtime: Runtime,
-    context: Context
+    context: Context,
+    tab: Rc<RefCell<Tab>>
 }
 
 impl JsContext {
-    pub fn new() -> Self {
+    pub fn new(tab: Rc<RefCell<Tab>>) -> Self {
         let runtime = Runtime::new().expect("Failed to create JS runtime");
         // Full context includes standard library features (JSON, etc.)
         let context = Context::full(&runtime).expect("Failed to create JS context");
 
         context.with(|ctx| {
             let log = |str: String| {println!("{}", str)};
-
+            let querySelectorAll = |selector: String| {
+                let selector = CssParser::new(selector.as_str()).selector().unwrap();
+            };
             ctx.globals().set("rustLog", Function::new(ctx.clone(), log).unwrap()).unwrap();
+            ctx.globals().set("rustQuerySelectorAll", Function::new(ctx.clone(), querySelectorAll).unwrap()).unwrap();
 
             let _: () = ctx.eval(RUNTIME_JS.as_str()).expect("JS Execution failed");
         });
 
-        Self { runtime, context }
+        Self { runtime, context, tab }
     }
 
     /// Generic evaluation with error handling

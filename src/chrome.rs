@@ -254,11 +254,11 @@ impl Chrome {
 
     }
 
-    pub fn on_enter(&mut self, mut tab: RefMut<Tab>)
+    pub fn on_enter(&mut self,  tab: Rc<RefCell<Tab>>)
     {
         if (self.focus == Focus::AddressBar)
         {
-            tab.load(Url::new(&*self.address_bar).unwrap(), None);
+            Tab::load(tab, Url::new(&*self.address_bar).unwrap(), None);
             self.focus = Focus::None;
         }
 

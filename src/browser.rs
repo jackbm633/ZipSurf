@@ -79,13 +79,13 @@ impl Browser {
     pub fn new_tab(&mut self, cc: &Context, url: Url)
     {
         let tab = Rc::new(RefCell::new(Tab::new(cc, HEIGHT - self.chrome.borrow().bottom())));
-        tab.borrow_mut().load(url, None);
+        Tab::load(tab.clone(), url, None);
         self.tabs.push(tab.clone());
         self.current_tab = tab.clone();
     }
 
     pub fn load_first_tab(&mut self, url: Url) {
-        self.tabs[0].borrow_mut().load(url, None);
+        Tab::load(self.tabs[0].clone(), url, None);
         self.tabs[0].borrow_mut().tab_height = HEIGHT - self.chrome.borrow().bottom();
     }
 
@@ -211,7 +211,7 @@ impl eframe::App for Browser {
         }
 
         if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
-            self.chrome.borrow_mut().on_enter(self.current_tab.borrow_mut());
+            self.chrome.borrow_mut().on_enter(self.current_tab.clone());
         }
 
 
@@ -233,15 +233,14 @@ impl eframe::App for Browser {
                             self.current_tab = self.tabs[index].clone();
                         }
                         ChromeAction::GoBack => {
-                            self.current_tab.borrow_mut().go_back();
+                            Tab::go_back(self.current_tab.clone());
                         }
                     }
                 }
             }  else {
                 self.focus = Some("content".parse().unwrap());
                 self.chrome.borrow_mut().blur();
-                let mut tab = self.current_tab.borrow_mut();
-                tab.click((pos - Vec2::new(0.0, self.chrome.borrow().bottom())));
+                Tab::click(self.current_tab.clone(), pos - Vec2::new(0.0, self.chrome.borrow().bottom()));
             }
         }
 

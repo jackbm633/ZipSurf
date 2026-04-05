@@ -12,3 +12,7 @@ globalThis.console = {
         rustLog("ERROR: " + args.join(' '));
     }
 };
+
+globalThis.document = {
+    querySelectorAll: (s) => rustQuerySelectorAll(s)
+};

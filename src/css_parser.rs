@@ -422,7 +422,7 @@ impl CssParser {
     ///   relationship between two selectors.
     ///
     /// See the implementation of `Selector`, `Tag`, and `Descendant` for more details.
-    fn selector(&mut self) -> Result<Selector, String> {
+    pub(crate) fn selector(&mut self) -> Result<Selector, String> {
         let mut out = Selector { selector: Tag {tag: self.word()?.to_lowercase()} };
         self.whitespace();
         while self.index < self.style.len() && self.style[self.index] != '{' {

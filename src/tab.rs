@@ -260,15 +260,15 @@ impl Tab {
         self.scroll_y += crate::tab::SCROLL_STEP;
     }
 
-    pub(crate) fn click(&mut self, position: Pos2) {
-        if self.focus.is_some() {
-            self.focus.clone().unwrap().borrow_mut().is_focused = false;
+    pub(crate) fn click(this: Rc<RefCell<Tab>>, position: Pos2) {
+        if this.borrow().focus.is_some() {
+            this.borrow().focus.clone().unwrap().borrow_mut().is_focused = false;
         }
         let mut new_pos = position.clone();
-        new_pos.y += self.scroll_y;
+        new_pos.y += this.borrow().scroll_y;
 
         let mut vec: Vec<Rc<RefCell<LayoutNode>>> = vec![];
-        let objs = LayoutNode::tree_to_vec(self.document.clone().unwrap(), &mut vec).iter().filter(
+        let objs = LayoutNode::tree_to_vec(this.borrow().document.clone().unwrap(), &mut vec).iter().filter(
             |l|
                 Rect::from_two_pos(l.borrow().position.unwrap().to_pos2(), (l.borrow().position.unwrap()
                     + l.borrow().size.unwrap()).to_pos2()).contains(new_pos)
@@ -289,7 +289,7 @@ impl Tab {
                 match node.node_type {
                     HtmlNodeType::Element(ref mut ele) => {
                         if ele.tag == "a" && ele.attributes.contains_key("href") {
-                            let url = self.url.as_ref().unwrap()
+                            let url = this.borrow().url.as_ref().unwrap()
                                 .resolve(ele.attributes.get("href").unwrap().clone().as_mut_str()).unwrap();
                             url_to_load = Some(url);
                             break;
@@ -308,8 +308,8 @@ impl Tab {
             // Handle actions after the 'node' borrow is dropped
             match action_to_take {
                 Some("input") => {
-                    self.focus = Some(current_element.clone());
-                    self.render();
+                    this.borrow_mut().focus = Some(current_element.clone());
+                    this.borrow_mut().render();
                     break;
                 }
                 Some("button") => {
@@ -325,7 +325,7 @@ impl Tab {
                         };
 
                         if is_form_with_action {
-                            return self.submit_form(elt_rc);
+                            return Tab::submit_form(this, elt_rc);
                         }
                         elt = elt_rc.borrow().parent.clone();
                     }
@@ -338,9 +338,9 @@ impl Tab {
         }
 
         if let Some(url) = url_to_load {
-            self.load(url, None);
+            Tab::load(this, url, None);
         } else if should_render {
-            self.render();
+            this.borrow_mut().render();
         }
     }
 
@@ -352,10 +352,10 @@ impl Tab {
     ///
     /// # Errors
     /// Network failures or request timeouts are logged to `stderr`.
-    pub fn load(&mut self, url: Url, body: Option<String>) {
-        self.url = Some(url.clone());
-        self.draw_commands.clear();
-        self.scroll_y = 0.0;
+    pub fn load(this: Rc<RefCell<Self>>, url: Url, body: Option<String>) {
+        this.borrow_mut().url = Some(url.clone());
+        this.borrow_mut().draw_commands.clear();
+        this.borrow_mut().scroll_y = 0.0;
         match url.request(body) {
             Ok(body) => {
                 let mut parser = HtmlParser {
@@ -363,11 +363,11 @@ impl Tab {
                     unfinished: vec![]
                 };
 
-                self.nodes =  Some(parser.parse());
-                self.rules = DEFAULT_STYLE_SHEET.clone();
+                this.borrow_mut().nodes =  Some(parser.parse());
+                this.borrow_mut().rules = DEFAULT_STYLE_SHEET.clone();
 
                 let links =
-                    HtmlNode::tree_to_vec(self.nodes.clone().unwrap(), &mut vec![])
+                    HtmlNode::tree_to_vec(this.borrow().nodes.clone().unwrap(), &mut vec![])
                         .iter().filter_map(|p| match &p.borrow().node_type {
                         HtmlNodeType::Element(e) => {
                             if e.tag == "link" && e.attributes.contains_key("rel") && e.attributes.get("rel").unwrap() == "stylesheet"
@@ -380,7 +380,7 @@ impl Tab {
                     }).collect::<Vec<String>>();
 
                 let scripts =
-                    HtmlNode::tree_to_vec(self.nodes.clone().unwrap(), &mut vec![])
+                    HtmlNode::tree_to_vec(this.borrow().nodes.clone().unwrap(), &mut vec![])
                         .iter().filter_map(|p| match &p.borrow().node_type {
                         HtmlNodeType::Element(e) => {
                             if e.tag == "script" && e.attributes.contains_key("src") {
@@ -398,7 +398,7 @@ impl Tab {
                             let body = st.request(None);
                             match body {
                                 Ok(bd) => {
-                                    self.rules.append(&mut CssParser::new(&*bd).parse().unwrap_or(vec![]));
+                                    this.borrow_mut().rules.append(&mut CssParser::new(&*bd).parse().unwrap_or(vec![]));
                                 }
                                 Err(_) => {}
                             }
@@ -406,7 +406,7 @@ impl Tab {
                         Err(_) => {}
                     }
                 }
-                let context = JsContext::new();
+                let context = JsContext::new(this.clone());
 
                 for script in scripts {
                     let script_url = url.resolve(script.clone().as_mut_str());
@@ -423,15 +423,15 @@ impl Tab {
                         Err(_) => {}
                     }
                 }
-                self.rules.sort_by(|a, b|
+                this.borrow_mut().rules.sort_by(|a, b|
                     Self::cascade_priority(a).cmp(&Self::cascade_priority(b)));
-                self.render();
+                this.borrow_mut().render();
             }
             Err(e) => {
                 eprintln!("Error loading URL: {}", e);
             }
         }
-        self.history.push(url);
+        this.borrow_mut().history.push(url);
     }
 
     fn render(&mut self) {
@@ -440,11 +440,11 @@ impl Tab {
         self.needs_redraw = true;
     }
 
-    pub fn go_back(&mut self) {
-        if self.history.len() > 1
+    pub fn go_back(this: Rc<RefCell<Self>>) {
+        if this.borrow_mut().history.len() > 1
         {
-            self.history.pop();
-            self.load(self.history.last().unwrap().clone(), None);
+            this.borrow_mut().history.pop();
+            Tab::load(this.clone(), this.borrow().history.last().unwrap().clone(), None);
         }
     }
 
@@ -596,7 +596,7 @@ impl Tab {
         }
     }
 
-    fn submit_form(&mut self, html_node: Rc<RefCell<HtmlNode>>) {
+    fn submit_form(this: Rc<RefCell<Tab>>, html_node: Rc<RefCell<HtmlNode>>) {
 
         let mut action = "".to_string();
         match &html_node.borrow().node_type {
@@ -633,8 +633,8 @@ impl Tab {
         }
         body.remove(0);
 
-        let url = self.url.clone().unwrap().resolve(&mut *action).unwrap();
-        self.load(url, Some(body));
+        let url = this.borrow().url.clone().unwrap().resolve(&mut *action).unwrap();
+        Tab::load(this, url, Some(body));
     }
 }
 
