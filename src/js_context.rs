@@ -19,11 +19,13 @@ pub struct JsContext {
 
 impl JsContext {
     pub(crate) fn dispatch_event(&self, event_type: &str, node: Rc<RefCell<HtmlNode>>) {
-        let mut nodes = self.nodes.borrow_mut();
-        let index = nodes.iter().position(|n| Rc::ptr_eq(n, &node)).unwrap_or_else(|| {
-            nodes.push(node);
-            nodes.len() - 1
-        });
+        let index = {
+            let mut nodes = self.nodes.borrow_mut();
+            nodes.iter().position(|n| Rc::ptr_eq(n, &node)).unwrap_or_else(|| {
+                nodes.push(node);
+                nodes.len() - 1
+            })
+        };
         self.context.with(|ctx| {
             let res: Result<(), _>=  ctx.eval(format!("new Node({}).dispatchEvent('{}')", index, event_type).as_str());
             match res {
@@ -67,9 +69,13 @@ impl JsContext {
                     let mut matched_indices = vec![];
                     for nd in elements {
                         if selector.matches(nd.clone()) {
-                            let mut registry = nodes_for_query.borrow_mut();
-                            matched_indices.push(registry.len());
-                            registry.push(nd);
+                            let index = {
+                                let mut registry = nodes_for_query.borrow_mut();
+                                let idx = registry.len();
+                                registry.push(nd);
+                                idx
+                            };
+                            matched_indices.push(index);
                         }
                     }
 
