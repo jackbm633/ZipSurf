@@ -42,3 +42,9 @@ Node.prototype.dispatchEvent = function(type) {
         list[i].call(this);
     }
 }
+
+Object.defineProperty(Node.prototype, 'innerHTML', {
+    set: function(s) {
+        rustInnerHtmlSet(this.handle, s.toString());
+    }
+});
