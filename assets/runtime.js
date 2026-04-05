@@ -34,3 +34,11 @@ Node.prototype.addEventListener = function(type, listener) {
     var list = dict[type];
     list.push(listener);
 }
+
+Node.prototype.dispatchEvent = function(type) {
+    var handle = this.handle;
+    var list = (LISTENERS[handle] && LISTENERS[handle][type]) || [];
+    for (var i = 0; i < list.length; i++) {
+        list[i].call(this);
+    }
+}
