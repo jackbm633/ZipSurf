@@ -592,9 +592,9 @@ impl Tab {
     }
 
     fn submit_form(this: Rc<RefCell<Tab>>, html_node: Rc<RefCell<HtmlNode>>) {
-
+        this.borrow().js.as_ref().unwrap().dispatch_event("submit", html_node.clone());
         let mut action = "".to_string();
-        match &html_node.borrow().node_type {
+        match &html_node.clone().borrow().node_type {
             HtmlNodeType::Element(e) => {
                 action = e.attributes.get("action").unwrap().clone();
             }
