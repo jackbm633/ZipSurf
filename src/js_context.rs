@@ -24,6 +24,20 @@ impl JsContext {
             nodes.push(node);
             nodes.len() - 1
         });
+        self.context.with(|ctx| {
+            let res: Result<(), _>=  ctx.eval(format!("new Node({}).dispatchEvent('{}')", index, event_type).as_str());
+            match res {
+                Ok(_) => {}
+                Err(e) => {
+                    if let rquickjs::Error::Exception = e {
+                        let exception = ctx.catch();
+                        println!("JS Exception in dispatch_event: {:?}", exception);
+                    } else {
+                        println!("Failed to dispatch event: {e}");
+                    }
+                }
+            }
+        });
     }
 }
 
@@ -82,7 +96,18 @@ impl JsContext {
 
             ctx.globals().set("rustQuerySelectorAll", Function::new(ctx.clone(), query_selector_all).unwrap()).unwrap();
 
-            let _: () = ctx.eval(RUNTIME_JS.as_str()).expect("JS Execution failed");
+            let res: Result<(), _>= ctx.eval(RUNTIME_JS.as_str());
+            match res {
+                Ok(_) => {}
+                Err(e) => {
+                    if let rquickjs::Error::Exception = e {
+                        let exception = ctx.catch();
+                        println!("JS Exception in dispatch_event: {:?}", exception);
+                    } else {
+                        println!("Failed to dispatch event: {e}");
+                    }
+                }
+            }
         });
 
         Self { runtime, context, tab, nodes }

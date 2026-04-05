@@ -25,7 +25,7 @@ Node.prototype.getAttribute = function(attr) {
     return rustGetAttribute(this.handle, attr);
 }
 
-LISTENERS = {}
+globalThis.LISTENERS = {}
 
 Node.prototype.addEventListener = function(type, listener) {
     if (!LISTENERS[this.handle]) LISTENERS[this.handle] = {};
