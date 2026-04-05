@@ -1,11 +1,10 @@
-﻿use std::any::Any;
-use std::cell::RefCell;
+﻿use std::cell::RefCell;
 use std::rc::Rc;
 use lazy_static::lazy_static;
-use rquickjs::{Context, Error, Function};
+use rquickjs::{Context, Function};
 use rquickjs::Runtime;
 use crate::css_parser::CssParser;
-use crate::node::HtmlNode;
+use crate::node::{HtmlNode, HtmlNodeType};
 use crate::tab::Tab;
 
 lazy_static! {
@@ -54,6 +53,21 @@ impl JsContext {
                 }
                 vec![]
             };
+
+            let get_attribute = move |handle: usize, attrib: String| -> String {
+                let nodes = nodes_clone.borrow();
+                let element_rc = nodes.get(handle).unwrap();
+                let element = element_rc.borrow();
+                let attr = match &element.node_type {
+                    HtmlNodeType::Element(e) => {
+                        e.attributes.get(&attrib).unwrap_or(&"".to_string()).clone()
+                    }
+                    HtmlNodeType::Text(_) => {"".into()}
+                };
+                return attr;
+
+            };
+            ctx.globals().set("rustGetAttribute", Function::new(ctx.clone(), get_attribute).unwrap()).unwrap();
             ctx.globals().set("rustLog", Function::new(ctx.clone(), log).unwrap()).unwrap();
 
             ctx.globals().set("rustQuerySelectorAll", Function::new(ctx.clone(), query_selector_all).unwrap()).unwrap();

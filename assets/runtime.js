@@ -20,3 +20,7 @@ globalThis.document = {
         return handles.map(function(h) { return new Node(h) });
     }
 };
+
+Node.prototype.getAttribute = function(attr) {
+    return rustGetAttribute(this.handle, attr);
+}
