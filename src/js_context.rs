@@ -1,4 +1,4 @@
-﻿use std::cell::RefCell;
+﻿use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 use lazy_static::lazy_static;
 use rquickjs::{Context, Function};
@@ -15,6 +15,20 @@ pub struct JsContext {
     context: Context,
     tab: Rc<RefCell<Tab>>,
     nodes: Rc<RefCell<Vec<Rc<RefCell<HtmlNode>>>>>
+}
+
+impl JsContext {
+    pub(crate) fn dispatch_event(&self, event_type: &str, node: Rc<RefCell<HtmlNode>>) {
+        let mut nodes = self.nodes.borrow_mut();
+        let index = nodes.iter().position(|n| Rc::ptr_eq(n, &node)).unwrap_or_else(|| {
+            nodes.push(node);
+            nodes.len() - 1
+        });
+
+        self.context.with(|ctx| {
+            let _: () = ctx.eval(format!("dispatchEvent('{}', {})", event_type, index).as_str()).expect("JS Evaluation failed");
+        });
+    }
 }
 
 impl JsContext {

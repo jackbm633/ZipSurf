@@ -189,7 +189,8 @@ pub struct Tab {
     history: Vec<Url>,
     rules: Vec<(Selector, HashMap<String, String>)>,
     focus: Option<Rc<RefCell<HtmlNode>>>,
-    needs_redraw: bool
+    needs_redraw: bool,
+    pub(crate) js: Option<JsContext>,
 }
 
 
@@ -213,6 +214,7 @@ impl Default for Tab {
             rules: vec![],
             focus: None,
             needs_redraw: true,
+            js: None,
         }
     }
 }
@@ -280,6 +282,12 @@ impl Tab {
         let mut element = objs.last().map(|&e| e.borrow().node.clone());
         let mut should_render = false;
         let mut url_to_load = None;
+
+        if let Some(ref el) = element {
+            if let Some(ref js) = this.borrow().js {
+                js.dispatch_event("click", el.clone());
+            }
+        }
 
         while let Some(current_element) = element {
             let mut action_to_take = None; // Track what to do after borrow is released
@@ -391,22 +399,8 @@ impl Tab {
                         HtmlNodeType::Text(_) => {None}
                     }).collect::<Vec<String>>();
 
-                for link in links {
-                    let style_url = url.resolve(link.clone().as_mut_str());
-                    match style_url {
-                        Ok(st) => {
-                            let body = st.request(None);
-                            match body {
-                                Ok(bd) => {
-                                    this.borrow_mut().rules.append(&mut CssParser::new(&*bd).parse().unwrap_or(vec![]));
-                                }
-                                Err(_) => {}
-                            }
-                        }
-                        Err(_) => {}
-                    }
-                }
                 let context = JsContext::new(this.clone());
+                this.borrow_mut().js = Some(context);
 
                 for script in scripts {
                     let script_url = url.resolve(script.clone().as_mut_str());
@@ -415,7 +409,7 @@ impl Tab {
                             let body = st.request(None);
                             match body {
                                 Ok(bd) => {
-                                    context.run::<()>(&*script, &*bd);
+                                    this.borrow().js.as_ref().unwrap().run::<()>(&*script, &*bd);
                                 }
                                 Err(_) => {}
                             }
