@@ -24,3 +24,13 @@ globalThis.document = {
 Node.prototype.getAttribute = function(attr) {
     return rustGetAttribute(this.handle, attr);
 }
+
+LISTENERS = {}
+
+Node.prototype.addEventListener = function(type, listener) {
+    if (!LISTENERS[this.handle]) LISTENERS[this.handle] = {};
+    var dict = LISTENERS[this.handle];
+    if (!dict[type]) dict[type] = [];
+    var list = dict[type];
+    list.push(listener);
+}
