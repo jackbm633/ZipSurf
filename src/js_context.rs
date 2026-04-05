@@ -1,5 +1,5 @@
 ﻿use lazy_static::lazy_static;
-use rquickjs::{Context, Function};
+use rquickjs::{Context, Error, Function};
 use rquickjs::Runtime;
 lazy_static! {
     static ref RUNTIME_JS: String = include_str!("../assets/runtime.js").to_string();
@@ -38,12 +38,19 @@ impl JsContext {
         })
     }
 
-    pub fn run(&self, code: &str) {
+    pub fn run<T>(&self, script_name: &str, code: &str)
+    where
+            for<'js> T: rquickjs::FromJs<'js> + 'static
+    {
         // We use the 'for<'js>' syntax to handle lifetimes generically
         self.context.with(|ctx| {
             // We explicitly type the result as () to tell rquickjs
             // we don't intend to pull any JS values out of this call.
-            let _result: () = ctx.eval(code).expect("JS Execution failed");
+            let result: Result<T, _> = ctx.eval::<T, _>(code);
+            match result {
+                Ok(_) => {}
+                Err(e) => {println!("Script {script_name} failed to run: {e}")}
+            }
         });
     }
 }

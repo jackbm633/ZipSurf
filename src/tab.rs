@@ -415,7 +415,7 @@ impl Tab {
                             let body = st.request(None);
                             match body {
                                 Ok(bd) => {
-                                    context.run(&*bd);
+                                    context.run::<()>(&*script, &*bd);
                                 }
                                 Err(_) => {}
                             }
