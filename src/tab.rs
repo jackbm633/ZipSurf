@@ -466,7 +466,7 @@ impl Tab {
         this.borrow_mut().history.push(url);
     }
 
-    fn render(&mut self) {
+    pub(crate) fn render(&mut self) {
         Self::style(Some(self.nodes.clone().unwrap()), &self.rules);
         self.document = Some(LayoutNode::new_document(self.nodes.clone().unwrap()));
         self.needs_redraw = true;

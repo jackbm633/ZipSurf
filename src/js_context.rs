@@ -113,6 +113,7 @@ impl JsContext {
                 {
                     child.borrow_mut().parent = Some(element_rc.clone());
                 }
+                tab.borrow_mut().render();
             };
             ctx.globals().set("rustGetAttribute", Function::new(ctx.clone(), get_attribute).unwrap()).unwrap();
             ctx.globals().set("rustLog", Function::new(ctx.clone(), log).unwrap()).unwrap();
