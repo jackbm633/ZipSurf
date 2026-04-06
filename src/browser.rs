@@ -6,7 +6,7 @@ use eframe::emath::Pos2;
 use eframe::epaint::{Color32, Stroke, StrokeKind};
 use egui::{Context, Painter, Vec2};
 use std::cell::RefCell;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::sync::Arc;
 
 /// A `Browser` structure that simulates a web browser with multiple tabs.

@@ -1,11 +1,10 @@
-﻿use crate::browser::Browser;
-use crate::layout::WIDTH;
+﻿use crate::layout::WIDTH;
 use crate::tab::{DrawCommand, DrawLine, DrawOutline, DrawRect, DrawText, Tab};
 use crate::url::Url;
 use eframe::epaint::{FontFamily, FontId};
 use egui::{Color32, Context, Pos2, Rect};
 use std::cell::RefCell;
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::sync::Arc;
 
 pub struct Chrome {
@@ -223,7 +222,7 @@ impl Chrome {
                 DrawText {
                     x: self.address_rect.left() + self.padding,
                     y: self.address_rect.top(),
-                    galley: ctx.fonts_mut(|f| galley.clone())
+                    galley: galley.clone()
                 }
             ));
 

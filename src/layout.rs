@@ -3,7 +3,7 @@ use crate::node::{HtmlNode, HtmlNodeType};
 use crate::tab::{DrawCommand, DrawLine, DrawRect, DrawText};
 use eframe::emath::Pos2;
 use eframe::epaint::{Color32, FontFamily, FontId};
-use egui::{Context, Galley, Rect, TextBuffer, Vec2};
+use egui::{Context, Galley, Rect, Vec2};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -337,7 +337,7 @@ impl LayoutNode {
             let inner_node_ptr = node.borrow().node.clone();
 
             let mode = Self::layout_mode(inner_node_ptr.clone());
-            let mut y: f32;
+            let y: f32;
             if node.borrow().previous.is_some() {
                 y = node.borrow().previous.clone().unwrap().borrow().position.unwrap().y
                     + node.borrow().previous.clone().unwrap().borrow().size.unwrap().y;

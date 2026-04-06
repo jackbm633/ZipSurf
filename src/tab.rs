@@ -399,6 +399,7 @@ impl Tab {
                 let context = JsContext::new(this.clone());
                 this.borrow_mut().js = Some(context);
 
+
                 for script in scripts {
                     let script_url = url.resolve(script.clone().as_mut_str());
                     match script_url {
@@ -414,6 +415,21 @@ impl Tab {
                         Err(_) => {}
                     }
                 }
+                for link in links {
+                    let style_url = url.resolve(link.clone().as_mut_str());
+                    match style_url {
+                    Ok(st) => {
+                    let body = st.request(None);
+                    match body {
+                    Ok(bd) => {
+                    this.borrow_mut().rules.append(&mut CssParser::new(&*bd).parse().unwrap_or(vec![]));
+                    }
+                    Err(_) => {}
+                    }
+                    }
+                    Err(_) => {}
+                }
+            }
                 this.borrow_mut().rules.sort_by(|a, b|
                     Self::cascade_priority(a).cmp(&Self::cascade_priority(b)));
                 this.borrow_mut().render();
