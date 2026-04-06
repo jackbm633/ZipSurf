@@ -44,17 +44,18 @@ use crate::url::Url;
 use eframe::egui;
 use egui::{Color32, Context, Galley, Pos2, Rect, Vec2};
 use lazy_static::lazy_static;
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
 
-
 lazy_static! {
-    static ref DEFAULT_STYLE_SHEET: Vec<(Selector, HashMap<String, String>)> = CssParser::new(include_str!("../assets/browser.css")).parse().unwrap();
-
+    static ref DEFAULT_STYLE_SHEET: Vec<(Selector, HashMap<String, String>)> =
+        CssParser::new(include_str!("../assets/browser.css"))
+            .parse()
+            .unwrap();
     static ref INHERITED_PROPERTIES: HashMap<&'static str, &'static str> = HashMap::from([
         ("color", "black"),
         ("font-size", "16px"),
@@ -62,7 +63,6 @@ lazy_static! {
         ("font-style", "normal"),
     ]);
 }
-
 
 /// Represents a browser tab or a parsing/processing context.
 ///
@@ -190,8 +190,6 @@ pub struct Tab {
     pub(crate) js: Option<JsContext>,
 }
 
-
-
 const SCROLL_STEP: f32 = 100.0;
 
 impl Default for Tab {
@@ -233,11 +231,12 @@ impl Tab {
         }
     }
 
-
     pub fn update_layout(&mut self, ctx: &egui::Context) {
         if self.needs_redraw {
             match self.document.as_mut() {
-                None => { panic!("Browser document not initialized.") },
+                None => {
+                    panic!("Browser document not initialized.")
+                }
                 Some(doc) => {
                     LayoutNode::layout(doc.clone(), ctx.clone());
                     self.draw_commands = vec![];
@@ -250,9 +249,14 @@ impl Tab {
 
     pub fn scroll_down(&mut self) {
         match &self.document {
-            None => { panic!("Browser document not initialized.") },
+            None => {
+                panic!("Browser document not initialized.")
+            }
             Some(doc) => {
-                let max_y = f32::max(0.0, doc.borrow().size.unwrap_or(Vec2::ZERO).y + 2.0*VSTEP - self.tab_height);
+                let max_y = f32::max(
+                    0.0,
+                    doc.borrow().size.unwrap_or(Vec2::ZERO).y + 2.0 * VSTEP - self.tab_height,
+                );
                 self.scroll_y = (self.scroll_y + crate::tab::SCROLL_STEP).min(max_y);
             }
         }
@@ -267,11 +271,16 @@ impl Tab {
         new_pos.y += this.borrow().scroll_y;
 
         let mut vec: Vec<Rc<RefCell<LayoutNode>>> = vec![];
-        let objs = LayoutNode::tree_to_vec(this.borrow().document.clone().unwrap(), &mut vec).iter().filter(
-            |l|
-                Rect::from_two_pos(l.borrow().position.unwrap().to_pos2(), (l.borrow().position.unwrap()
-                    + l.borrow().size.unwrap()).to_pos2()).contains(new_pos)
-        ).collect::<Vec<&Rc<RefCell<LayoutNode>>>>();
+        let objs = LayoutNode::tree_to_vec(this.borrow().document.clone().unwrap(), &mut vec)
+            .iter()
+            .filter(|l| {
+                Rect::from_two_pos(
+                    l.borrow().position.unwrap().to_pos2(),
+                    (l.borrow().position.unwrap() + l.borrow().size.unwrap()).to_pos2(),
+                )
+                .contains(new_pos)
+            })
+            .collect::<Vec<&Rc<RefCell<LayoutNode>>>>();
         if objs.len() == 0 {
             return;
         }
@@ -294,8 +303,13 @@ impl Tab {
                 match node.node_type {
                     HtmlNodeType::Element(ref mut ele) => {
                         if ele.tag == "a" && ele.attributes.contains_key("href") {
-                            let url = this.borrow().url.as_ref().unwrap()
-                                .resolve(ele.attributes.get("href").unwrap().clone().as_mut_str()).unwrap();
+                            let url = this
+                                .borrow()
+                                .url
+                                .as_ref()
+                                .unwrap()
+                                .resolve(ele.attributes.get("href").unwrap().clone().as_mut_str())
+                                .unwrap();
                             url_to_load = Some(url);
                             break;
                         } else if ele.tag == "input" {
@@ -338,7 +352,9 @@ impl Tab {
                 _ => {}
             }
 
-            if url_to_load.is_some() { break; }
+            if url_to_load.is_some() {
+                break;
+            }
             element = current_element.borrow().parent.clone();
         }
 
@@ -365,40 +381,46 @@ impl Tab {
             Ok(body) => {
                 let mut parser = HtmlParser {
                     body: body.clone(),
-                    unfinished: vec![]
+                    unfinished: vec![],
                 };
 
-                this.borrow_mut().nodes =  Some(parser.parse());
+                this.borrow_mut().nodes = Some(parser.parse());
                 this.borrow_mut().rules = DEFAULT_STYLE_SHEET.clone();
 
                 let links =
                     HtmlNode::tree_to_vec(this.borrow().nodes.clone().unwrap(), &mut vec![])
-                        .iter().filter_map(|p| match &p.borrow().node_type {
-                        HtmlNodeType::Element(e) => {
-                            if e.tag == "link" && e.attributes.contains_key("rel") && e.attributes.get("rel").unwrap() == "stylesheet"
-                            && e.attributes.contains_key("href") {
-                                return Some(e.attributes.get("href").unwrap().to_string())
+                        .iter()
+                        .filter_map(|p| match &p.borrow().node_type {
+                            HtmlNodeType::Element(e) => {
+                                if e.tag == "link"
+                                    && e.attributes.contains_key("rel")
+                                    && e.attributes.get("rel").unwrap() == "stylesheet"
+                                    && e.attributes.contains_key("href")
+                                {
+                                    return Some(e.attributes.get("href").unwrap().to_string());
+                                }
+                                None
                             }
-                            None
-                        }
-                        HtmlNodeType::Text(_) => {None}
-                    }).collect::<Vec<String>>();
+                            HtmlNodeType::Text(_) => None,
+                        })
+                        .collect::<Vec<String>>();
 
                 let scripts =
                     HtmlNode::tree_to_vec(this.borrow().nodes.clone().unwrap(), &mut vec![])
-                        .iter().filter_map(|p| match &p.borrow().node_type {
-                        HtmlNodeType::Element(e) => {
-                            if e.tag == "script" && e.attributes.contains_key("src") {
-                                return Some(e.attributes.get("src").unwrap().to_string())
+                        .iter()
+                        .filter_map(|p| match &p.borrow().node_type {
+                            HtmlNodeType::Element(e) => {
+                                if e.tag == "script" && e.attributes.contains_key("src") {
+                                    return Some(e.attributes.get("src").unwrap().to_string());
+                                }
+                                None
                             }
-                            None
-                        }
-                        HtmlNodeType::Text(_) => {None}
-                    }).collect::<Vec<String>>();
+                            HtmlNodeType::Text(_) => None,
+                        })
+                        .collect::<Vec<String>>();
 
                 let context = JsContext::new(this.clone());
                 this.borrow_mut().js = Some(context);
-
 
                 for script in scripts {
                     let script_url = url.resolve(script.clone().as_mut_str());
@@ -418,20 +440,23 @@ impl Tab {
                 for link in links {
                     let style_url = url.resolve(link.clone().as_mut_str());
                     match style_url {
-                    Ok(st) => {
-                    let body = st.request(None);
-                    match body {
-                    Ok(bd) => {
-                    this.borrow_mut().rules.append(&mut CssParser::new(&*bd).parse().unwrap_or(vec![]));
+                        Ok(st) => {
+                            let body = st.request(None);
+                            match body {
+                                Ok(bd) => {
+                                    this.borrow_mut().rules.append(
+                                        &mut CssParser::new(&*bd).parse().unwrap_or(vec![]),
+                                    );
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                        Err(_) => {}
                     }
-                    Err(_) => {}
-                    }
-                    }
-                    Err(_) => {}
                 }
-            }
-                this.borrow_mut().rules.sort_by(|a, b|
-                    Self::cascade_priority(a).cmp(&Self::cascade_priority(b)));
+                this.borrow_mut()
+                    .rules
+                    .sort_by(|a, b| Self::cascade_priority(a).cmp(&Self::cascade_priority(b)));
                 this.borrow_mut().render();
             }
             Err(e) => {
@@ -448,10 +473,13 @@ impl Tab {
     }
 
     pub fn go_back(this: Rc<RefCell<Self>>) {
-        if this.borrow_mut().history.len() > 1
-        {
+        if this.borrow_mut().history.len() > 1 {
             this.borrow_mut().history.pop();
-            Tab::load(this.clone(), this.borrow().history.last().unwrap().clone(), None);
+            Tab::load(
+                this.clone(),
+                this.borrow().history.last().unwrap().clone(),
+                None,
+            );
         }
     }
 
@@ -515,7 +543,10 @@ impl Tab {
     /// - The expected behavior of `CssParser::new` and its `body` method is to parse inline styles and
     ///   resolve them into a `HashMap<String, String>`. Any deviations from this expected behavior may
     ///   cause a panic.
-    fn style(node: Option<Rc<RefCell<HtmlNode>>>, rules: &Vec<(Selector, HashMap<String, String>)>) {
+    fn style(
+        node: Option<Rc<RefCell<HtmlNode>>>,
+        rules: &Vec<(Selector, HashMap<String, String>)>,
+    ) {
         let nd = node.expect("Browser document not initialized.");
 
         let mut css_style_maps = Vec::new();
@@ -526,8 +557,14 @@ impl Tab {
                     inherited_style_map.insert(item.0.to_string(), item.1.to_string());
                 }
                 Some(ref pt) => {
-                    inherited_style_map.insert(item.0.parse().unwrap(), pt.borrow().style.get(&item.0.to_string()).unwrap().to_string());
-
+                    inherited_style_map.insert(
+                        item.0.parse().unwrap(),
+                        pt.borrow()
+                            .style
+                            .get(&item.0.to_string())
+                            .unwrap()
+                            .to_string(),
+                    );
                 }
             }
         }
@@ -539,14 +576,11 @@ impl Tab {
             }
         }
 
-
-        
         // Encapsulate the mutation in a block to drop the borrow_mut() before recursion
         let children = {
             let mut node_ref = nd.borrow_mut();
 
-            let inline_style_attr = if let HtmlNodeType::Element(el)
-                = &node_ref.node_type {
+            let inline_style_attr = if let HtmlNodeType::Element(el) = &node_ref.node_type {
                 el.attributes.get("style").cloned()
             } else {
                 None
@@ -570,18 +604,27 @@ impl Tab {
             node_ref.children.clone()
         };
 
-
-        if nd.borrow_mut().style.get("font-size").unwrap().ends_with("%") {
+        if nd
+            .borrow_mut()
+            .style
+            .get("font-size")
+            .unwrap()
+            .ends_with("%")
+        {
             let mut node_ref = nd.borrow_mut();
-            let parent_font_size = match &node_ref.parent
-            {
-                None => {INHERITED_PROPERTIES.get("font-size").unwrap().to_string()}
-                Some(pt) => {pt.borrow().style.get("font-size").unwrap().to_string()}
+            let parent_font_size = match &node_ref.parent {
+                None => INHERITED_PROPERTIES.get("font-size").unwrap().to_string(),
+                Some(pt) => pt.borrow().style.get("font-size").unwrap().to_string(),
             };
 
-            let node_pct = f32::from_str(&node_ref.style.get("font-size").unwrap().replace("%", "")).unwrap() / 100.0;
+            let node_pct =
+                f32::from_str(&node_ref.style.get("font-size").unwrap().replace("%", "")).unwrap()
+                    / 100.0;
             let parent_x = parent_font_size.replace("px", "").parse::<f32>().unwrap();
-            node_ref.style.insert("font-size".to_string(), format!("{}px", parent_x * node_pct));
+            node_ref.style.insert(
+                "font-size".to_string(),
+                format!("{}px", parent_x * node_pct),
+            );
         }
 
         // 3. Recursive phase - the borrow on 'nd' is now released
@@ -590,10 +633,12 @@ impl Tab {
         }
     }
 
-    pub fn keypress(&mut self, keypress: &String)
-    {
+    pub fn keypress(&mut self, keypress: &String) {
         if self.focus.is_some() {
-            self.js.as_ref().unwrap().dispatch_event("keydown", self.focus.clone().unwrap());
+            self.js
+                .as_ref()
+                .unwrap()
+                .dispatch_event("keydown", self.focus.clone().unwrap());
             match self.focus.clone().unwrap().borrow_mut().node_type {
                 HtmlNodeType::Element(ref mut e) => {
                     e.attributes.get_mut("value").unwrap().push_str(keypress);
@@ -605,7 +650,11 @@ impl Tab {
     }
 
     fn submit_form(this: Rc<RefCell<Tab>>, html_node: Rc<RefCell<HtmlNode>>) {
-        this.borrow().js.as_ref().unwrap().dispatch_event("submit", html_node.clone());
+        this.borrow()
+            .js
+            .as_ref()
+            .unwrap()
+            .dispatch_event("submit", html_node.clone());
         let mut action = "".to_string();
         match &html_node.clone().borrow().node_type {
             HtmlNodeType::Element(e) => {
@@ -617,15 +666,11 @@ impl Tab {
         let mut binding = vec![];
         let inputs: Vec<_> = HtmlNode::tree_to_vec(html_node, &mut binding)
             .iter()
-            .filter(|n| {
-                match &n.borrow().node_type {
-                    HtmlNodeType::Element(e) => {
-                        e.tag == "input" && e.attributes.contains_key("name")
-                    }
-                    HtmlNodeType::Text(_) => {false}
-                }
+            .filter(|n| match &n.borrow().node_type {
+                HtmlNodeType::Element(e) => e.tag == "input" && e.attributes.contains_key("name"),
+                HtmlNodeType::Text(_) => false,
             })
-        .collect();
+            .collect();
 
         let mut body: String = "".into();
         for input in inputs {
@@ -633,22 +678,30 @@ impl Tab {
                 HtmlNodeType::Element(e) => {
                     let name = utf8_percent_encode(&e.attributes["name"], NON_ALPHANUMERIC);
 
-                    let value = utf8_percent_encode(e.attributes.get("value").map(|v| v.as_str()).unwrap_or_else(|| ""), NON_ALPHANUMERIC);
-                    body.push_str( &format!("&{}={}", name, value));
+                    let value = utf8_percent_encode(
+                        e.attributes
+                            .get("value")
+                            .map(|v| v.as_str())
+                            .unwrap_or_else(|| ""),
+                        NON_ALPHANUMERIC,
+                    );
+                    body.push_str(&format!("&{}={}", name, value));
                 }
                 HtmlNodeType::Text(_) => {}
             }
         }
         body.remove(0);
 
-        let url = this.borrow().url.clone().unwrap().resolve(&mut *action).unwrap();
+        let url = this
+            .borrow()
+            .url
+            .clone()
+            .unwrap()
+            .resolve(&mut *action)
+            .unwrap();
         Tab::load(this, url, Some(body));
     }
 }
-
-
-
-
 
 /// A structure that represents text rendering properties, including its content,
 /// position, and font details.
@@ -669,7 +722,7 @@ pub(crate) struct DrawText {
     /// Absolute vertical position in points.
     pub(crate) y: f32,
     /// Galley for drawing the text.
-    pub(crate) galley: Arc<Galley>
+    pub(crate) galley: Arc<Galley>,
 }
 
 pub(crate) struct DrawRect {
@@ -694,20 +747,20 @@ pub(crate) struct DrawRect {
     ///
     /// # Usage
     /// This field can be read or modified directly in structs where it is declared as `pub`.
-    pub color: Color32
+    pub color: Color32,
 }
 
-pub(crate) struct DrawOutline{
+pub(crate) struct DrawOutline {
     pub(crate) rect: Rect,
     pub(crate) color: Color32,
-    pub(crate) thickness: f32
+    pub(crate) thickness: f32,
 }
 
 pub struct DrawLine {
     pub(crate) from: Pos2,
     pub(crate) to: Pos2,
     pub(crate) color: Color32,
-    pub(crate) thickness: f32
+    pub(crate) thickness: f32,
 }
 pub enum DrawCommand {
     DrawText(DrawText),
@@ -750,14 +803,10 @@ impl DrawCommand {
     /// valid `DrawCommand` variants are used.
     pub(crate) fn bottom(&self) -> f32 {
         match self {
-            DrawCommand::DrawText(txt) => {
-                txt.y + txt.galley.rect.height()
-            }
-            DrawCommand::DrawRect(rct) => {
-                rct.rect.bottom()
-            },
+            DrawCommand::DrawText(txt) => txt.y + txt.galley.rect.height(),
+            DrawCommand::DrawRect(rct) => rct.rect.bottom(),
             DrawCommand::DrawOutline(out) => out.rect.top(),
-            DrawCommand::DrawLine(line) => f32::min(line.from.y, line.to.y)
+            DrawCommand::DrawLine(line) => f32::min(line.from.y, line.to.y),
         }
     }
 
@@ -784,14 +833,10 @@ impl DrawCommand {
     /// ```
     pub(crate) fn top(&self) -> f32 {
         match self {
-            DrawCommand::DrawText(txt) => {
-                txt.y
-            }
-            DrawCommand::DrawRect(rct) => {
-                rct.rect.top()
-            },
+            DrawCommand::DrawText(txt) => txt.y,
+            DrawCommand::DrawRect(rct) => rct.rect.top(),
             DrawCommand::DrawOutline(out) => out.rect.top(),
-            DrawCommand::DrawLine(line) => f32::max(line.from.y, line.to.y)
+            DrawCommand::DrawLine(line) => f32::max(line.from.y, line.to.y),
         }
     }
 }
