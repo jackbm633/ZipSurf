@@ -1,17 +1,14 @@
-﻿use std::cell::{RefCell, RefMut};
-use std::rc::{Rc, Weak};
-use std::sync::Arc;
-use eframe::emath::Vec2;
-use eframe::epaint::{FontFamily, FontId, Stroke, StrokeKind};
-use egui::{Color32, Context, Pos2, Rect};
-use egui::WidgetText::Galley;
-use crate::browser::Browser;
-use crate::layout::{LayoutNode, HEIGHT, WIDTH};
+﻿use crate::browser::Browser;
+use crate::layout::WIDTH;
 use crate::tab::{DrawCommand, DrawLine, DrawOutline, DrawRect, DrawText, Tab};
 use crate::url::Url;
+use eframe::epaint::{FontFamily, FontId};
+use egui::{Color32, Context, Pos2, Rect};
+use std::cell::RefCell;
+use std::rc::{Rc, Weak};
+use std::sync::Arc;
 
 pub struct Chrome {
-    pub(crate) browser: Weak<RefCell<Browser>>,
     font_id: Option<FontId>,
     line_height: f32,
     padding: f32,
@@ -40,9 +37,8 @@ pub enum ChromeAction {
 
 
 impl Chrome {
-    pub fn new(browser: Weak<RefCell<Browser>>, ctx: &egui::Context) -> Self {
+    pub fn new() -> Self {
         Self {
-            browser,
             font_id: None,
             line_height: 0.0,
             padding: 5.0,
@@ -73,7 +69,7 @@ impl Chrome {
         let line_height = ctx.fonts_mut(|f| f.row_height(&font_id));
         
         self.font_id = Some(font_id.clone());
-        self.line_height = line_height;;
+        self.line_height = line_height;
         self.tabbar_bottom = line_height + 10.0;
         self.urlbar_top = self.tabbar_bottom;
         self.urlbar_bottom = self.urlbar_top + line_height + 2.0 * self.padding;
@@ -101,7 +97,6 @@ impl Chrome {
         let text_width = ctx.fonts_mut(|f| f.layout_no_wrap("Tab X".into(),
                                                     self.font_id.clone().unwrap(), Color32::BLACK)).size().x;
         let tab_width = text_width + 10.0;
-        let tab_height = self.line_height;
         let tab_rect = Rect::from_two_pos(Pos2::new(tabs_start + i as f32 * tab_width, self.tabbar_top),
                                           Pos2::new(tabs_start + (i + 1) as f32 * tab_width, self.tabbar_bottom));
         tab_rect
@@ -170,7 +165,7 @@ impl Chrome {
                 )
             );
 
-            if (Rc::ptr_eq(tab_rc, current_tab)) {
+            if Rc::ptr_eq(tab_rc, current_tab) {
                 self.draw_commands.push(DrawCommand::DrawLine(
                     DrawLine {
                         from: Pos2::new(0.0, bounds.bottom()),
@@ -256,7 +251,7 @@ impl Chrome {
 
     pub fn on_enter(&mut self,  tab: Rc<RefCell<Tab>>)
     {
-        if (self.focus == Focus::AddressBar)
+        if self.focus == Focus::AddressBar
         {
             Tab::load(tab, Url::new(&*self.address_bar).unwrap(), None);
             self.focus = Focus::None;

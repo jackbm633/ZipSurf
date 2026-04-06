@@ -1,20 +1,18 @@
-﻿use std::cell::{RefCell, RefMut};
-use std::rc::Rc;
-use lazy_static::lazy_static;
-use rquickjs::{Context, Function};
-use rquickjs::Runtime;
-use crate::css_parser::CssParser;
+﻿use crate::css_parser::CssParser;
 use crate::html_parser::HtmlParser;
 use crate::node::{HtmlNode, HtmlNodeType};
 use crate::tab::Tab;
+use lazy_static::lazy_static;
+use rquickjs::Runtime;
+use rquickjs::{Context, Function};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 lazy_static! {
     static ref RUNTIME_JS: String = include_str!("../assets/runtime.js").to_string();
 }
 pub struct JsContext {
-    runtime: Runtime,
     context: Context,
-    tab: Rc<RefCell<Tab>>,
     nodes: Rc<RefCell<Vec<Rc<RefCell<HtmlNode>>>>>
 }
 
@@ -118,7 +116,7 @@ impl JsContext {
             };
             ctx.globals().set("rustGetAttribute", Function::new(ctx.clone(), get_attribute).unwrap()).unwrap();
             ctx.globals().set("rustLog", Function::new(ctx.clone(), log).unwrap()).unwrap();
-
+            ctx.globals().set("rustInnerHtml", Function::new(ctx.clone(), inner_html_set).unwrap()).unwrap();
             ctx.globals().set("rustQuerySelectorAll", Function::new(ctx.clone(), query_selector_all).unwrap()).unwrap();
 
             let res: Result<(), _>= ctx.eval(RUNTIME_JS.as_str());
@@ -135,20 +133,9 @@ impl JsContext {
             }
         });
 
-        Self { runtime, context, tab, nodes }
+        Self { context, nodes }
     }
 
-    /// Generic evaluation with error handling
-    /// The 'static bound on T ensures the data doesn't hold references
-    /// back to the JS stack that's about to be destroyed.
-    pub fn eval<T>(&self, code: &str) -> T
-    where
-            for<'js> T: rquickjs::FromJs<'js> + 'static
-    {
-        self.context.with(|ctx| {
-            ctx.eval::<T, _>(code).expect("JS Evaluation failed")
-        })
-    }
 
     pub fn run<T>(&self, script_name: &str, code: &str)
     where

@@ -60,24 +60,6 @@ pub enum SelectorType {
 }
 
 impl Selector {
-    /// Creates a new `Selector` with the specified tag.
-    ///
-    /// # Arguments
-    ///
-    /// * `tag` - A `String` representing the tag name to be associated with the `Selector`.
-    ///
-    /// # Returns
-    ///
-    /// A new instance of `Selector` configured with the specified tag.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// let tag_selector = Selector::new_tag("div".to_string());
-    /// ```
-    fn new_tag(tag: String) -> Self {
-        Selector { selector: SelectorType::Tag { tag }}
-    }
 
     /// Determines if a given `HtmlNode` matches a specified selector.
     ///

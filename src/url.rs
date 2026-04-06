@@ -177,7 +177,7 @@ impl Url {
         }
     }
     
-    pub fn resolve(&self, mut url: &mut str) -> Result<Url, String> {
+    pub fn resolve(&self, url: &mut str) -> Result<Url, String> {
         if url.contains("://") {
             return Url::new(url);
         }

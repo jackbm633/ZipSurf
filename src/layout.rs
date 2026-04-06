@@ -1,14 +1,12 @@
-﻿
-use crate::node::Element;
-use std::cell::RefCell;
-use std::rc::Rc;
-use crate::tab::{DrawCommand, DrawLine, DrawRect, DrawText};
+﻿use crate::layout::LayoutMode::{Block, Inline};
 use crate::node::{HtmlNode, HtmlNodeType};
+use crate::tab::{DrawCommand, DrawLine, DrawRect, DrawText};
+use eframe::emath::Pos2;
 use eframe::epaint::{Color32, FontFamily, FontId};
 use egui::{Context, Galley, Rect, TextBuffer, Vec2};
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
-use eframe::emath::Pos2;
-use crate::layout::LayoutMode::{Block, Inline};
 
 pub const HSTEP: f32 = 13.0;
 pub const VSTEP: f32 = 17.0;
@@ -64,7 +62,6 @@ pub struct LayoutNode {
     pub(crate) content: LayoutNodeType,
     pub(crate) position: Option<Vec2>,
     pub(crate) size: Option<Vec2>,
-    pub(crate) display_list: Rc<RefCell<Vec<DrawCommand>>>
 }
 
 impl std::fmt::Debug for LayoutNode {
@@ -106,7 +103,6 @@ impl LayoutNode {
             children: Vec::new(),
             previous: None,
             content: LayoutNodeType::Document,
-            display_list: Rc::new(RefCell::new(Vec::new())),
             position: None,
             size: None
         }))
@@ -148,7 +144,6 @@ impl LayoutNode {
             children: Vec::new(),
             previous: None,
             content: LayoutNodeType::Line(LineLayout { max_ascent: 0.0, max_descent: 0.0 }),
-            display_list: Rc::new(RefCell::new(Vec::new())),
             position: Some(Vec2::ZERO),
             size: Some(Vec2::ZERO),
         }))
@@ -219,7 +214,6 @@ impl LayoutNode {
             children: Vec::new(),
             previous: None,
             content: LayoutNodeType::Text(text_layout),
-            display_list: Rc::new(RefCell::new(Vec::new())),
             position: Some(Vec2::ZERO),
             size: Some(size),
         }))
@@ -276,7 +270,6 @@ impl LayoutNode {
                 }
             ),
             previous,
-            display_list: Rc::new(RefCell::new(Vec::new())),
             position: None,
             size: None
         }))
@@ -344,7 +337,7 @@ impl LayoutNode {
             let inner_node_ptr = node.borrow().node.clone();
 
             let mode = Self::layout_mode(inner_node_ptr.clone());
-            let mut y: f32 = 0.0;
+            let mut y: f32;
             if node.borrow().previous.is_some() {
                 y = node.borrow().previous.clone().unwrap().borrow().position.unwrap().y
                     + node.borrow().previous.clone().unwrap().borrow().size.unwrap().y;
@@ -576,7 +569,7 @@ impl LayoutNode {
                 }
 
                 let node_borrow = self.node.borrow();
-                let text = match &node_borrow.node_type {
+                match &node_borrow.node_type {
                     HtmlNodeType::Element(ele) if ele.tag == "input" => {
                         ele.attributes.get("value").cloned().unwrap_or_default()
                     }
@@ -652,7 +645,7 @@ impl LayoutNode {
     /// ```
     pub fn paint_tree(node: Rc<RefCell<LayoutNode>>, display_list: &mut Vec<DrawCommand>, accumulated_offset: Vec2) {
         // 1. Ask the node to paint itself at the given offset
-        if (node.borrow().should_paint())
+        if node.borrow().should_paint()
         {
             display_list.append(&mut node.borrow().paint());
         }
@@ -723,9 +716,9 @@ impl LayoutNode {
                         _ => false
                     }
                 }) { Block}
-                else if (!layout_node.borrow().children.is_empty() ||
+                else if !layout_node.borrow().children.is_empty() ||
                     matches!(layout_node.borrow().node_type,
-                        HtmlNodeType::Element(ref ele) if ele.tag == "input")) {
+                        HtmlNodeType::Element(ref ele) if ele.tag == "input") {
                     Inline
                 }
                 else {
@@ -862,7 +855,6 @@ pub struct LineLayout {
 #[derive(Debug)]
 pub struct TextLayout {
     pub galley: Arc<Galley>,
-    pub color: Color32,
 }
 
 /// Represents the layout properties of a text block.
@@ -1066,7 +1058,6 @@ impl<'a> BlockComposer<'a> {
         // 4. Create the TextLayout struct
         let text_content = TextLayout {
             galley,
-            color,
         };
 
         // 5. Create the Text Node (Note: We don't have the Line parent yet,
@@ -1381,7 +1372,6 @@ impl<'a> BlockComposer<'a> {
             children: vec![],
             previous: None,
             content: LayoutNodeType::Input(InputLayout { galley }),
-            display_list: Rc::new(RefCell::new(Vec::new())),
             position: Some(Vec2::new(self.layout.cursor_x, 0.0)),
             size: Some(Vec2::new(input_width, input_height)),
         }));
@@ -1392,7 +1382,7 @@ impl<'a> BlockComposer<'a> {
 }
 
 #[derive(Debug)]
-struct InputLayout {
+pub(crate) struct InputLayout {
     pub galley: Arc<Galley>,
 }
 

@@ -1,13 +1,13 @@
-﻿use std::cell::{RefCell, RefMut};
-use std::rc::{Rc, Weak};
-use std::sync::Arc;
-use eframe::emath::{Pos2, Rect};
-use eframe::epaint::{Color32, Stroke, StrokeKind};
-use egui::{Context, Modifiers, Painter, Vec2};
-use crate::chrome::{Chrome, ChromeAction};
+﻿use crate::chrome::{Chrome, ChromeAction};
 use crate::layout::HEIGHT;
 use crate::tab::{DrawCommand, Tab};
 use crate::url::Url;
+use eframe::emath::Pos2;
+use eframe::epaint::{Color32, Stroke, StrokeKind};
+use egui::{Context, Painter, Vec2};
+use std::cell::RefCell;
+use std::rc::{Rc, Weak};
+use std::sync::Arc;
 
 /// A `Browser` structure that simulates a web browser with multiple tabs.
 ///
@@ -62,12 +62,12 @@ impl Browser {
         let tab = Rc::new(RefCell::new(Tab::new(&cc.egui_ctx, 0.0)));
         let browser = Rc::new(RefCell::new(
             Browser { tabs: vec![tab.clone()], current_tab: tab.clone(),
-            chrome: Rc::new(RefCell::new(Chrome::new(Weak::new(), &cc.egui_ctx))),
+            chrome: Rc::new(RefCell::new(Chrome::new())),
                 focus: None,
             }));
 
         // 2. Now update Chrome with a real weak pointer to the browser
-        let chrome = Rc::new(RefCell::new(Chrome::new(Rc::downgrade(&browser), &cc.egui_ctx)));
+        let chrome = Rc::new(RefCell::new(Chrome::new()));
 
 
         browser.borrow_mut().chrome = chrome.clone();

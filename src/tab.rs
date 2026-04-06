@@ -34,25 +34,22 @@
 //! Browser::style(Some(Rc::new(RefCell::new(html_tree))), &rules);
 //! ```
 //! fn
-use std::cell::RefCell;
-use std::cmp::max;
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::str::FromStr;
-use crate::layout::{LayoutNode, HEIGHT, VSTEP};
-use crate::node::{HtmlNodeType, HtmlNode, Element};
-use crate::url::Url;
-use eframe::egui;
-use egui::{Color32, Context, Galley, Pos2, Rect, Stroke, Vec2};
-use std::sync::Arc;
-use eframe::epaint::StrokeKind;
-use lazy_static::lazy_static;
-use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
-use rquickjs::Runtime;
 use crate::css_parser::CssParser;
 use crate::html_parser::HtmlParser;
 use crate::js_context::JsContext;
+use crate::layout::{LayoutNode, VSTEP};
+use crate::node::{HtmlNode, HtmlNodeType};
 use crate::selector::Selector;
+use crate::url::Url;
+use eframe::egui;
+use egui::{Color32, Context, Galley, Pos2, Rect, Vec2};
+use lazy_static::lazy_static;
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::str::FromStr;
+use std::sync::Arc;
 
 
 lazy_static! {
@@ -280,7 +277,7 @@ impl Tab {
         }
 
         let mut element = objs.last().map(|&e| e.borrow().node.clone());
-        let mut should_render = false;
+        let should_render = false;
         let mut url_to_load = None;
 
         if let Some(ref el) = element {

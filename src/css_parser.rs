@@ -324,7 +324,7 @@ impl CssParser {
     /// ```
     fn handle_body_error(&mut self) -> bool {
         let why = self.ignore_until(vec![';', '}']);
-        if (why == Some(';')) {
+        if why == Some(';') {
             self.literal(';').expect("TODO: panic message");
             self.whitespace();
             return false;
