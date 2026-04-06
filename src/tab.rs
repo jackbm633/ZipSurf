@@ -187,7 +187,7 @@ pub struct Tab {
     rules: Vec<(Selector, HashMap<String, String>)>,
     focus: Option<Rc<RefCell<HtmlNode>>>,
     needs_redraw: bool,
-    pub(crate) js: Option<JsContext>,
+    pub(crate) js: Option<Rc<JsContext>>,
 }
 
 const SCROLL_STEP: f32 = 100.0;
@@ -420,7 +420,7 @@ impl Tab {
                         .collect::<Vec<String>>();
 
                 let context = JsContext::new(this.clone());
-                this.borrow_mut().js = Some(context);
+                this.borrow_mut().js = Some(Rc::new(context));
 
                 for script in scripts {
                     let script_url = url.resolve(script.clone().as_mut_str());
@@ -633,19 +633,33 @@ impl Tab {
         }
     }
 
-    pub fn keypress(&mut self, keypress: &String) {
-        if self.focus.is_some() {
-            self.js
-                .as_ref()
-                .unwrap()
-                .dispatch_event("keydown", self.focus.clone().unwrap());
-            match self.focus.clone().unwrap().borrow_mut().node_type {
-                HtmlNodeType::Element(ref mut e) => {
-                    e.attributes.get_mut("value").unwrap().push_str(keypress);
-                }
-                HtmlNodeType::Text(_) => {}
+    pub fn keypress(this: Rc<RefCell<Tab>>, keypress: &String) {
+        let (focus_node, js_ctx_rc) = {
+            let tab = this.borrow();
+            (tab.focus.clone(), tab.js.clone()) // Clone the Rc<JsContext>
+        }; // <--- Tab borrow is dropped here!
+
+        if let Some(node) = focus_node {
+            // 1. Dispatch event
+            // We are NOT borrowing 'this' (Tab) anymore.
+            if let Some(js_ctx) = js_ctx_rc {
+                js_ctx.dispatch_event("keydown", node.clone());
             }
-            self.render();
+
+            // 2. Update the attribute
+            {
+                let mut node_borrow = node.borrow_mut();
+                if let HtmlNodeType::Element(ref mut e) = node_borrow.node_type {
+                    if let Some(value) = e.attributes.get_mut("value") {
+                        value.push_str(keypress);
+                    }
+                }
+            }
+
+            // 3. Render
+            // This will now succeed because the JS execution above has finished
+            // and it didn't find Tab already borrowed.
+            this.borrow_mut().render();
         }
     }
 

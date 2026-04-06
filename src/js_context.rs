@@ -100,24 +100,43 @@ impl JsContext {
 
             let inner_html_set = move |handle: usize, html: String| {
                 let mut parser = HtmlParser {
-                    body: format!("<html><body>{}</body></html>",html.clone()),
-                    unfinished: vec![]
+                    body: format!("<html><body>{}</body></html>", html.clone()),
+                    unfinished: vec![],
                 };
                 let parsed = parser.parse();
                 let new_node_parent = &parsed.borrow().children.first().unwrap().clone();
-                let new_node = &new_node_parent.borrow().children;
-                let nodes = nodes_for_inner_html.borrow();
-                let element_rc = nodes.get(handle).unwrap();
-                element_rc.borrow_mut().children = new_node.clone();
-                for child in &element_rc.borrow_mut().children
+                let new_children = new_node_parent.borrow().children.clone();
+
+                let element_rc = {
+                    let nodes = nodes_for_inner_html.borrow();
+                    nodes.get(handle).unwrap().clone()
+                };
+
                 {
-                    child.borrow_mut().parent = Some(element_rc.clone());
+                    let mut element = element_rc.borrow_mut();
+                    element.children = new_children.clone();
                 }
-                tab.borrow_mut().render();
-            };
+
+                    for child in new_children {
+                        child.borrow_mut().parent = Some(element_rc.clone());
+                    }
+
+                    if let Ok(mut tab_borrow) = tab.try_borrow_mut() {
+                        tab_borrow.render();
+                    } else {
+                        eprintln!("RE-ENTRANT BORROW DETECTED!");
+                        eprintln!("Tab is already borrowed. This call to inner_html_set is likely");
+                        eprintln!("triggered from within a Tab method that already holds a borrow.");
+
+                        // To see the current call stack:
+                        let bt = std::backtrace::Backtrace::capture();
+                        println!("{}", bt);
+                        println!("Warning: Tab already borrowed, skipping immediate render.");
+                    }
+                };
             ctx.globals().set("rustGetAttribute", Function::new(ctx.clone(), get_attribute).unwrap()).unwrap();
             ctx.globals().set("rustLog", Function::new(ctx.clone(), log).unwrap()).unwrap();
-            ctx.globals().set("rustInnerHtml", Function::new(ctx.clone(), inner_html_set).unwrap()).unwrap();
+            ctx.globals().set("rustInnerHtmlSet", Function::new(ctx.clone(), inner_html_set).unwrap()).unwrap();
             ctx.globals().set("rustQuerySelectorAll", Function::new(ctx.clone(), query_selector_all).unwrap()).unwrap();
 
             let res: Result<(), _>= ctx.eval(RUNTIME_JS.as_str());
