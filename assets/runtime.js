@@ -48,3 +48,22 @@ Object.defineProperty(Node.prototype, 'innerHTML', {
         rustInnerHtmlSet(this.handle, s.toString());
     }
 });
+
+function Event(type) {
+    this.type = type
+    this.do_default = true;
+}
+
+Event.prototype.preventDefault = function() {
+    this.do_default = false;
+}
+
+Node.prototype.dispatchEvent = function(evt) {
+    var type = evt.type;
+    // ...
+    for (var i = 0; i < list.length; i++) {
+        list[i].call(this, evt);
+    }
+    // ...
+    return evt.do_default;
+}
