@@ -4,6 +4,7 @@ use lazy_static::lazy_static;
 use rquickjs::{Context, Function};
 use rquickjs::Runtime;
 use crate::css_parser::CssParser;
+use crate::html_parser::HtmlParser;
 use crate::node::{HtmlNode, HtmlNodeType};
 use crate::tab::Tab;
 
@@ -96,6 +97,24 @@ impl JsContext {
                 };
                 return attr;
 
+            };
+            let nodes_for_inner_html = nodes.clone();
+
+            let inner_html_set = move |handle: usize, html: String| {
+                let mut parser = HtmlParser {
+                    body: format!("<html><body>{}</body></html>",html.clone()),
+                    unfinished: vec![]
+                };
+                let parsed = parser.parse();
+                let new_node_parent = &parsed.borrow().children.first().unwrap().clone();
+                let new_node = &new_node_parent.borrow().children;
+                let nodes = nodes_for_inner_html.borrow();
+                let element_rc = nodes.get(handle).unwrap();
+                element_rc.borrow_mut().children = new_node.clone();
+                for child in &element_rc.borrow_mut().children
+                {
+                    child.borrow_mut().parent = Some(element_rc.clone());
+                }
             };
             ctx.globals().set("rustGetAttribute", Function::new(ctx.clone(), get_attribute).unwrap()).unwrap();
             ctx.globals().set("rustLog", Function::new(ctx.clone(), log).unwrap()).unwrap();
