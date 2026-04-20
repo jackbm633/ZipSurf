@@ -60,13 +60,13 @@ impl Browser {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Rc<RefCell<Self>> {
         cc.egui_ctx.set_visuals(egui::Visuals::light());
         Self::setup_custom_fonts(&cc.egui_ctx);
-
-        let tab = Rc::new(RefCell::new(Tab::new(&cc.egui_ctx, 0.0)));
+        let cookie_jar = Rc::new(RefCell::new(HashMap::new()));
+        let tab = Rc::new(RefCell::new(Tab::new(&cc.egui_ctx, 0.0, cookie_jar.clone())));
         let browser = Rc::new(RefCell::new(
             Browser { tabs: vec![tab.clone()], current_tab: tab.clone(),
             chrome: Rc::new(RefCell::new(Chrome::new())),
                 focus: None,
-                cookie_jar: Rc::new(RefCell::new(HashMap::new())),
+                cookie_jar: cookie_jar.clone(),
             }));
 
         // 2. Now update Chrome with a real weak pointer to the browser
@@ -81,7 +81,7 @@ impl Browser {
 
     pub fn new_tab(&mut self, cc: &Context, url: Url)
     {
-        let tab = Rc::new(RefCell::new(Tab::new(cc, HEIGHT - self.chrome.borrow().bottom())));
+        let tab = Rc::new(RefCell::new(Tab::new(cc, HEIGHT - self.chrome.borrow().bottom(), self.cookie_jar.clone())));
         Tab::load(tab.clone(), url, None);
         self.tabs.push(tab.clone());
         self.current_tab = tab.clone();

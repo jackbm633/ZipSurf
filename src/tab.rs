@@ -188,6 +188,7 @@ pub struct Tab {
     focus: Option<Rc<RefCell<HtmlNode>>>,
     needs_redraw: bool,
     pub(crate) js: Option<Rc<JsContext>>,
+    cookie_jar: Rc<RefCell<HashMap<String, String>>>
 }
 
 const SCROLL_STEP: f32 = 100.0;
@@ -210,6 +211,7 @@ impl Default for Tab {
             focus: None,
             needs_redraw: true,
             js: None,
+            cookie_jar: Rc::new(RefCell::new(HashMap::new()))
         }
     }
 }
@@ -222,11 +224,12 @@ impl Tab {
     ///
     /// # Arguments
     /// * `cc` - Integration context providing access to the egui render state.
-    pub fn new(cc: &Context, height: f32) -> Self {
+    pub fn new(cc: &Context, height: f32, cookie_jar: Rc<RefCell<HashMap<String, String>>>) -> Self {
         cc.set_visuals(egui::Visuals::light());
 
         Self {
             tab_height: height,
+            cookie_jar: cookie_jar.clone(),
             ..Default::default()
         }
     }
@@ -374,10 +377,11 @@ impl Tab {
     /// # Errors
     /// Network failures or request timeouts are logged to `stderr`.
     pub fn load(this: Rc<RefCell<Self>>, url: Url, body: Option<String>) {
+        let cookie_jar = this.borrow().cookie_jar.clone();
         this.borrow_mut().url = Some(url.clone());
         this.borrow_mut().draw_commands.clear();
         this.borrow_mut().scroll_y = 0.0;
-        match url.request(body) {
+        match url.request(body, cookie_jar) {
             Ok(body) => {
                 let mut parser = HtmlParser {
                     body: body.clone(),
@@ -426,7 +430,7 @@ impl Tab {
                     let script_url = url.resolve(script.clone().as_mut_str());
                     match script_url {
                         Ok(st) => {
-                            let body = st.request(None);
+                            let body = st.request(None, this.borrow().cookie_jar.clone());
                             match body {
                                 Ok(bd) => {
                                     this.borrow().js.as_ref().unwrap().run::<()>(&*script, &*bd);
@@ -441,7 +445,7 @@ impl Tab {
                     let style_url = url.resolve(link.clone().as_mut_str());
                     match style_url {
                         Ok(st) => {
-                            let body = st.request(None);
+                            let body = st.request(None, this.borrow().cookie_jar.clone());
                             match body {
                                 Ok(bd) => {
                                     this.borrow_mut().rules.append(
