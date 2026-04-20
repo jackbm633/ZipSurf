@@ -6,6 +6,7 @@ use eframe::emath::Pos2;
 use eframe::epaint::{Color32, Stroke, StrokeKind};
 use egui::{Context, Painter, Vec2};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -51,7 +52,8 @@ pub struct Browser {
     pub(crate) tabs: Vec<Rc<RefCell<Tab>>>,
     current_tab: Rc<RefCell<Tab>>,
     chrome: Rc<RefCell<Chrome>>,
-    focus: Option<String>
+    focus: Option<String>,
+    cookie_jar: Rc<RefCell<HashMap<String, String>>>,
 }
 
 impl Browser {
@@ -64,6 +66,7 @@ impl Browser {
             Browser { tabs: vec![tab.clone()], current_tab: tab.clone(),
             chrome: Rc::new(RefCell::new(Chrome::new())),
                 focus: None,
+                cookie_jar: Rc::new(RefCell::new(HashMap::new())),
             }));
 
         // 2. Now update Chrome with a real weak pointer to the browser
