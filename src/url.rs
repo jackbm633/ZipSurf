@@ -4,7 +4,8 @@ use std::{
     io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
 };
-
+use std::cell::RefCell;
+use std::rc::Rc;
 use native_tls::TlsConnector;
 
 /// Represents a decomposed HTTP URL.
@@ -98,7 +99,7 @@ impl Url {
     /// # Returns
     /// * `Ok(String)` - The decrypted response body.
     /// * `Err(String)` - If the connection, TLS handshake, or parsing fails.
-    pub fn request(&self, body: Option<String>) -> Result<String, String> {
+    pub fn request(&self, body: Option<String>, cookie_jar: Rc<RefCell<HashMap<String, String>>>) -> Result<String, String> {
         // Connect to the host on port 80
         if let Ok(tcp_stream) = TcpStream::connect(format!("{}:{}", self.host, self.port)) {
             let mut stream: Box<dyn ReadWrite> = if self.scheme == "https" {
@@ -117,11 +118,16 @@ impl Url {
                 None => "GET",
             };
 
-            let request = format!("{} {} HTTP/1.0\r\nHost: {}{}\r\n\r\n{}", method, self.path, self.host,
-            match body {
-                Some(ref body) => format!("\r\nContent-Length: {}\r\n\r\n{}", body.as_bytes().len(), body),
-                None => "".to_string(),
-            }, body.unwrap_or_else(|| "".to_string()));
+            let request = format!("{} {} HTTP/1.0\r\nHost: {}{}{}\r\n\r\n{}", method, self.path, self.host,
+                match body {
+                    Some(ref body) => format!("\r\nContent-Length: {}\r\n\r\n{}", body.as_bytes().len(), body),
+                    None => "".to_string(),
+                },
+                if cookie_jar.borrow().contains_key(&self.host) {
+                    format!("\r\nCookie: {}", cookie_jar.borrow()[&self.host])
+                } else {
+                    "".to_string()
+                }, body.unwrap_or_else(|| "".to_string()));
             let request_result = stream.write_all(request.as_bytes());
             if let Err(e) = request_result {
                 return Err(format!("Failed to send request: {}", e));
