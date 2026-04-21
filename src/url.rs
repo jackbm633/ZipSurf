@@ -118,16 +118,22 @@ impl Url {
                 None => "GET",
             };
 
-            let request = format!("{} {} HTTP/1.0\r\nHost: {}{}{}\r\n\r\n{}", method, self.path, self.host,
-                match body {
-                    Some(ref body) => format!("\r\nContent-Length: {}\r\n\r\n{}", body.as_bytes().len(), body),
-                    None => "".to_string(),
-                },
-                if cookie_jar.borrow().contains_key(&self.host) {
-                    format!("\r\nCookie: {}", cookie_jar.borrow()[&self.host])
-                } else {
-                    "".to_string()
-                }, body.unwrap_or_else(|| "".to_string()));
+            let mut request = format!("{} {} HTTP/1.0\r\nHost: {}\r\n", method, self.path, self.host);
+
+            if let Some(ref b) = body {
+                request.push_str(&format!("Content-Length: {}\r\n", b.as_bytes().len()));
+            }
+
+            if let Some(cookie) = cookie_jar.borrow().get(&self.host) {
+                request.push_str(&format!("Cookie: {}\r\n", cookie));
+            }
+
+            request.push_str("\r\n"); // End of headers
+
+            if let Some(b) = body {
+                request.push_str(&b);
+            }
+
             let request_result = stream.write_all(request.as_bytes());
             if let Err(e) = request_result {
                 return Err(format!("Failed to send request: {}", e));
@@ -165,12 +171,17 @@ impl Url {
                         .insert(key.to_lowercase().to_string(), value.trim().to_string());
                 }
             }
+
+            if response_headers.contains_key("set-cookie") {
+                cookie_jar.borrow_mut().insert(self.host.to_string(), response_headers["set-cookie"].to_string());
+            }
             // Read the remainder of the response body.
             if response_headers.contains_key("transfer-encoding")
                 || response_headers.contains_key("content-encoding")
             {
                 return Err("Unsupported transfer or content encoding".to_string());
             }
+
 
             let mut buf = String::new();
             reader
