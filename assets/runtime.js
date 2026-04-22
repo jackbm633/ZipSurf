@@ -62,6 +62,11 @@ XMLHttpRequest.prototype.open = function(method, url, is_async) {
     this.url = url;
 }
 
+XMLHttpRequest.prototype.send = function(body) {
+    this.responseText = rustXmlHttpRequestSend(
+        this.method, this.url, body);
+}
+
 Event.prototype.preventDefault = function() {
     this.do_default = false;
 }

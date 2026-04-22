@@ -97,7 +97,7 @@ impl JsContext {
 
             };
             let nodes_for_inner_html = nodes.clone();
-
+            let ihs_tab = tab.clone();
             let inner_html_set = move |handle: usize, html: String| {
                 let mut parser = HtmlParser {
                     body: format!("<html><body>{}</body></html>", html.clone()),
@@ -121,7 +121,7 @@ impl JsContext {
                         child.borrow_mut().parent = Some(element_rc.clone());
                     }
 
-                    if let Ok(mut tab_borrow) = tab.try_borrow_mut() {
+                    if let Ok(mut tab_borrow) = ihs_tab.try_borrow_mut() {
                         tab_borrow.render();
                     } else {
                         eprintln!("RE-ENTRANT BORROW DETECTED!");
@@ -134,10 +134,17 @@ impl JsContext {
                         println!("Warning: Tab already borrowed, skipping immediate render.");
                     }
                 };
+            let xml_tab = tab.clone();
+            let xml_http_request_send = move |method: String, mut url: String, body: String| -> String {
+                let full_url = xml_tab.clone().borrow().url.clone().unwrap().resolve(url.as_mut_str());
+                let request = full_url.unwrap().request(Option::from(body), xml_tab.clone().borrow().cookie_jar.clone());
+                request.unwrap()
+            };
             ctx.globals().set("rustGetAttribute", Function::new(ctx.clone(), get_attribute).unwrap()).unwrap();
             ctx.globals().set("rustLog", Function::new(ctx.clone(), log).unwrap()).unwrap();
             ctx.globals().set("rustInnerHtmlSet", Function::new(ctx.clone(), inner_html_set).unwrap()).unwrap();
             ctx.globals().set("rustQuerySelectorAll", Function::new(ctx.clone(), query_selector_all).unwrap()).unwrap();
+            ctx.globals().set("rustXmlHttpRequestSend", Function::new(ctx.clone(), xml_http_request_send).unwrap()).unwrap();
 
             let res: Result<(), _>= ctx.eval(RUNTIME_JS.as_str());
             match res {

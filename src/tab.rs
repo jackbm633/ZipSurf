@@ -188,7 +188,7 @@ pub struct Tab {
     focus: Option<Rc<RefCell<HtmlNode>>>,
     needs_redraw: bool,
     pub(crate) js: Option<Rc<JsContext>>,
-    cookie_jar: Rc<RefCell<HashMap<String, String>>>
+    pub(crate) cookie_jar: Rc<RefCell<HashMap<String, String>>>
 }
 
 const SCROLL_STEP: f32 = 100.0;
