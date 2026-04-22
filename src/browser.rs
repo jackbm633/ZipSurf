@@ -4,11 +4,12 @@ use crate::tab::{DrawCommand, Tab};
 use crate::url::Url;
 use eframe::emath::Pos2;
 use eframe::epaint::{Color32, Stroke, StrokeKind};
-use egui::{Context, Painter, Vec2};
+use egui::{Context, Painter, Ui, Vec2};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
+use eframe::Frame;
 
 /// A `Browser` structure that simulates a web browser with multiple tabs.
 ///
@@ -200,37 +201,36 @@ impl Browser {
 }
 
 impl eframe::App for Browser {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.chrome.borrow_mut().init(ctx);
-
+    fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
+        self.chrome.borrow_mut().init(ui.ctx());
         {
             let mut tab = self.current_tab.borrow_mut();
-            tab.update_layout(ctx);
+            tab.update_layout(ui.ctx());
         }
-        self.chrome.borrow_mut().draw(ctx, &*self.tabs, &self.current_tab);
+        self.chrome.borrow_mut().draw(ui.ctx(), &*self.tabs, &self.current_tab);
 
-        if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+        if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
             self.current_tab.borrow_mut().scroll_down();
         }
 
-        if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+        if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             self.chrome.borrow_mut().on_enter(self.current_tab.clone());
         }
 
 
-        if ctx.input(|i| i.pointer.primary_clicked()) {
-            let pos = ctx.input(|i| i.pointer.interact_pos()).unwrap();
+        if ui.input(|i| i.pointer.primary_clicked()) {
+            let pos = ui.input(|i| i.pointer.interact_pos()).unwrap();
 
             if pos.y < self.chrome.borrow().bottom() {
                 self.focus = None;
                 // 1. Get the action and drop the chrome borrow immediately
-                let action = self.chrome.borrow_mut().click(ctx, pos, self.tabs.len());
-                
+                let action = self.chrome.borrow_mut().click(ui, pos, self.tabs.len());
+
                 // 2. Now handle the action. 'self' is no longer borrowed!
                 if let Some(action) = action {
                     match action {
                         ChromeAction::NewTab => {
-                            self.new_tab(ctx, Url::new("https://browser.engineering").unwrap());
+                            self.new_tab(ui, Url::new("https://browser.engineering").unwrap());
                         }
                         ChromeAction::SelectTab(index) => {
                             self.current_tab = self.tabs[index].clone();
@@ -247,21 +247,21 @@ impl eframe::App for Browser {
             }
         }
 
-        ctx.input(|i| {
+        ui.input(|i| {
             for event in &i.events {
                 if let egui::Event::Text(text) = event {
                     self.chrome.borrow_mut().keypress(text);
                     if self.focus == Some("content".parse().unwrap()) {
                         Tab::keypress(self.current_tab.clone(), text);
                     }
-                    
+
                 }
             }
         });
 
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(Color32::WHITE))
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 let painter = ui.painter();
                 let tab = self.current_tab.borrow();
                 let scroll_y = tab.scroll_y;
@@ -281,4 +281,6 @@ impl eframe::App for Browser {
                 }
             });
     }
+
+
 }

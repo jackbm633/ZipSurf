@@ -1,6 +1,8 @@
 use std::cell::RefCell;
 use std::env::args;
 use std::rc::Rc;
+use eframe::Frame;
+use egui::Ui;
 use crate::{url::Url};
 use crate::browser::Browser;
 
@@ -40,8 +42,10 @@ struct BrowserAppWrapper {
 }
 
 impl eframe::App for BrowserAppWrapper {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        // Delegate the update call to the actual Browser logic
-        self.browser.borrow_mut().update(ctx, frame);
+    fn ui(&mut self, ui: &mut Ui, frame: &mut Frame) {
+        self.browser.borrow_mut().ui(ui, frame);
     }
+
 }
+
+
