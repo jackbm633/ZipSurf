@@ -135,10 +135,13 @@ impl JsContext {
                     }
                 };
             let xml_tab = tab.clone();
-            let xml_http_request_send = move |method: String, mut url: String, body: String| -> String {
+            let xml_http_request_send = move |ctx: rquickjs::Ctx, _method: String, mut url: String, body: String| -> rquickjs::Result<String> {
                 let full_url = xml_tab.clone().borrow().url.clone().unwrap().resolve(url.as_mut_str());
+                if full_url.clone().unwrap().origin() != xml_tab.clone().borrow().url.clone().unwrap().origin() {
+                    return Err(ctx.throw(rquickjs::Value::from_string(rquickjs::String::from_str(ctx.clone(), "CORS request blocked").unwrap())));
+                }
                 let request = full_url.unwrap().request(Option::from(body), xml_tab.clone().borrow().cookie_jar.clone());
-                request.unwrap()
+                Ok(request.unwrap())
             };
             ctx.globals().set("rustGetAttribute", Function::new(ctx.clone(), get_attribute).unwrap()).unwrap();
             ctx.globals().set("rustLog", Function::new(ctx.clone(), log).unwrap()).unwrap();

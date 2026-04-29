@@ -24,6 +24,7 @@ pub struct Url {
     pub port: u16,
 }
 
+
 impl Url {
     /// Fully parses a URL string into a structured `Url` object.
     ///
@@ -232,6 +233,10 @@ impl Url {
             443 => "".to_string(),
             _ => format!(":{}", self.port),
         }, self.path)
+    }
+
+    pub(crate) fn origin(&self) -> String {
+        format!("{}://{}:{}", self.scheme, self.host, self.port)
     }
 }
 
