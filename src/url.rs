@@ -100,7 +100,7 @@ impl Url {
     /// # Returns
     /// * `Ok(String)` - The decrypted response body.
     /// * `Err(String)` - If the connection, TLS handshake, or parsing fails.
-    pub fn request(&self, body: Option<String>, cookie_jar: Rc<RefCell<HashMap<String, String>>>) -> Result<String, String> {
+    pub fn request(&self, body: Option<String>, cookie_jar: Rc<RefCell<HashMap<String, (String, HashMap<String, String>)>>>) -> Result<String, String> {
         // Connect to the host on port 80
         if let Ok(tcp_stream) = TcpStream::connect(format!("{}:{}", self.host, self.port)) {
             let mut stream: Box<dyn ReadWrite> = if self.scheme == "https" {
@@ -126,7 +126,7 @@ impl Url {
             }
 
             if let Some(cookie) = cookie_jar.borrow().get(&self.host) {
-                request.push_str(&format!("Cookie: {}\r\n", cookie));
+                request.push_str(&format!("Cookie: {}\r\n", cookie.0));
             }
 
             request.push_str("\r\n"); // End of headers
@@ -174,7 +174,20 @@ impl Url {
             }
 
             if response_headers.contains_key("set-cookie") {
-                cookie_jar.borrow_mut().insert(self.host.to_string(), response_headers["set-cookie"].to_string());
+                let cookie = response_headers["set-cookie"].to_string();
+                let cookie_parts: Vec<&str> = cookie.split(';').collect();
+                let mut params = HashMap::<String, String>::new();
+                if cookie.contains(";") {
+                    for cookie_part in cookie_parts.iter().skip(1) {
+                        let mut parts = cookie_part.splitn(2, '=').collect::<Vec<_>>();
+                        if parts.len() == 2 {
+                            params.insert(parts[0].to_string().to_lowercase(), parts[1].to_string().to_lowercase());
+                        } else {
+                            params.insert(parts[0].to_string().to_lowercase(), "true".to_string());
+                        }
+                    }
+                }
+                cookie_jar.borrow_mut().insert(self.host.to_string(), (cookie_parts.first().unwrap().parse().unwrap(), params));
             }
             // Read the remainder of the response body.
             if response_headers.contains_key("transfer-encoding")
