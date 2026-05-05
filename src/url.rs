@@ -179,7 +179,7 @@ impl Url {
                 let mut params = HashMap::<String, String>::new();
                 if cookie.contains(";") {
                     for cookie_part in cookie_parts.iter().skip(1) {
-                        let mut parts = cookie_part.splitn(2, '=').collect::<Vec<_>>();
+                        let parts = cookie_part.splitn(2, '=').collect::<Vec<_>>();
                         if parts.len() == 2 {
                             params.insert(parts[0].to_string().to_lowercase(), parts[1].to_string().to_lowercase());
                         } else {

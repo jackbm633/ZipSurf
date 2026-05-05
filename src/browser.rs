@@ -54,7 +54,7 @@ pub struct Browser {
     current_tab: Rc<RefCell<Tab>>,
     chrome: Rc<RefCell<Chrome>>,
     focus: Option<String>,
-    cookie_jar: Rc<RefCell<HashMap<String, String>>>,
+    cookie_jar: Rc<RefCell<HashMap<String, (String, HashMap<String, String>)>>>,
 }
 
 impl Browser {

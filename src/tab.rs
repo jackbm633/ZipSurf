@@ -188,7 +188,7 @@ pub struct Tab {
     focus: Option<Rc<RefCell<HtmlNode>>>,
     needs_redraw: bool,
     pub(crate) js: Option<Rc<JsContext>>,
-    pub(crate) cookie_jar: Rc<RefCell<HashMap<String, String>>>
+    pub(crate) cookie_jar: Rc<RefCell<HashMap<String, (String, HashMap<String, String>)>>>
 }
 
 const SCROLL_STEP: f32 = 100.0;
@@ -224,7 +224,7 @@ impl Tab {
     ///
     /// # Arguments
     /// * `cc` - Integration context providing access to the egui render state.
-    pub fn new(cc: &Context, height: f32, cookie_jar: Rc<RefCell<HashMap<String, String>>>) -> Self {
+    pub fn new(cc: &Context, height: f32, cookie_jar: Rc<RefCell<HashMap<String, (String, HashMap<String, String>)>>>) -> Self {
         cc.set_visuals(egui::Visuals::light());
 
         Self {
