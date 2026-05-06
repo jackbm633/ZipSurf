@@ -188,7 +188,8 @@ pub struct Tab {
     focus: Option<Rc<RefCell<HtmlNode>>>,
     needs_redraw: bool,
     pub(crate) js: Option<Rc<JsContext>>,
-    pub(crate) cookie_jar: Rc<RefCell<HashMap<String, (String, HashMap<String, String>)>>>
+    pub(crate) cookie_jar: Rc<RefCell<HashMap<String, (String, HashMap<String, String>)>>>,
+    allowed_origins: Option<Vec<String>>
 }
 
 const SCROLL_STEP: f32 = 100.0;
@@ -211,7 +212,8 @@ impl Default for Tab {
             focus: None,
             needs_redraw: true,
             js: None,
-            cookie_jar: Rc::new(RefCell::new(HashMap::new()))
+            cookie_jar: Rc::new(RefCell::new(HashMap::new())),
+            allowed_origins: None
         }
     }
 }
@@ -383,8 +385,22 @@ impl Tab {
         this.borrow_mut().scroll_y = 0.0;
         match url.request(body, cookie_jar) {
             Ok(body) => {
+
+                this.borrow_mut().allowed_origins = None;
+
+                if body.headers.contains_key("content-security-policy") {
+                    let csp: Vec<_> = body.headers["content-security-policy"].split_ascii_whitespace().collect();
+                    if csp.len() > 0 && csp.first().unwrap().starts_with("default-src") {
+                        let mut allowed_origins = Vec::<String>::new();
+                        for origin in csp.iter().skip(1) {
+                            allowed_origins.push(Url::new(origin).unwrap().origin())
+                        }
+                        this.borrow_mut().allowed_origins = Some(allowed_origins);
+                    }
+                }
+
                 let mut parser = HtmlParser {
-                    body: body.clone(),
+                    body: body.content.clone(),
                     unfinished: vec![],
                 };
 
@@ -428,12 +444,17 @@ impl Tab {
 
                 for script in scripts {
                     let script_url = url.resolve(script.clone().as_mut_str());
+
                     match script_url {
                         Ok(st) => {
+                            if !Self::allowed_request(this.clone(), st.clone()) {
+                                println!("Blocked script");
+                                continue
+                            }
                             let body = st.request(None, this.borrow().cookie_jar.clone());
                             match body {
                                 Ok(bd) => {
-                                    this.borrow().js.as_ref().unwrap().run::<()>(&*script, &*bd);
+                                    this.borrow().js.as_ref().unwrap().run::<()>(&*script, &*bd.content);
                                 }
                                 Err(_) => {}
                             }
@@ -449,7 +470,7 @@ impl Tab {
                             match body {
                                 Ok(bd) => {
                                     this.borrow_mut().rules.append(
-                                        &mut CssParser::new(&*bd).parse().unwrap_or(vec![]),
+                                        &mut CssParser::new(&*bd.content).parse().unwrap_or(vec![]),
                                     );
                                 }
                                 Err(_) => {}
@@ -718,6 +739,10 @@ impl Tab {
             .resolve(&mut *action)
             .unwrap();
         Tab::load(this, url, Some(body));
+    }
+
+    pub(crate) fn allowed_request(this: Rc<RefCell<Tab>>, url: Url) -> bool {
+        this.borrow().allowed_origins.is_none() || this.borrow().allowed_origins.as_ref().unwrap().contains(&url.origin())
     }
 }
 

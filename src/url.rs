@@ -24,6 +24,11 @@ pub struct Url {
     pub port: u16,
 }
 
+pub struct Response {
+    pub headers: HashMap<String, String>,
+    pub content: String
+}
+
 
 impl Url {
     /// Fully parses a URL string into a structured `Url` object.
@@ -100,7 +105,7 @@ impl Url {
     /// # Returns
     /// * `Ok(String)` - The decrypted response body.
     /// * `Err(String)` - If the connection, TLS handshake, or parsing fails.
-    pub fn request(&self, body: Option<String>, cookie_jar: Rc<RefCell<HashMap<String, (String, HashMap<String, String>)>>>) -> Result<String, String> {
+    pub fn request(&self, body: Option<String>, cookie_jar: Rc<RefCell<HashMap<String, (String, HashMap<String, String>)>>>) -> Result<Response, String> {
         // Connect to the host on port 80
         if let Ok(tcp_stream) = TcpStream::connect(format!("{}:{}", self.host, self.port)) {
             let mut stream: Box<dyn ReadWrite> = if self.scheme == "https" {
@@ -202,7 +207,10 @@ impl Url {
                 .read_to_string(&mut buf)
                 .map_err(|error| error.to_string())?;
 
-            Ok(buf)
+            Ok(Response {
+                headers: response_headers,
+                content: buf,
+            })
         } else {
             Err(format!("Failed to connect to host {}", self.host).to_string())
         }
