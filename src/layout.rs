@@ -519,6 +519,7 @@ impl LayoutNode {
                     let bgcolor = self.node.borrow().style.get("background-color")
                         .unwrap_or(&"transparent".to_string()).clone();
 
+
                     if let Ok(color_parse) = csscolorparser::parse(&bgcolor) {
                         if let Ok(color) = Color32::from_hex(&color_parse.to_css_hex()) {
                             if color.a() > 0 {
@@ -527,9 +528,11 @@ impl LayoutNode {
                                 let pos = self.position.unwrap_or(Vec2::ZERO);
                                 let size = self.size.unwrap_or(Vec2::ZERO);
 
+                                let radius = self.node.borrow().style.get("border-radius").unwrap_or(&"0px".to_string()).replace("px", "").parse::<f32>().unwrap_or(0.0);
                                 cmds.push(DrawCommand::DrawRect(DrawRect {
                                     rect: Rect::from_two_pos(pos.to_pos2(), (pos + size).to_pos2()),
                                     color,
+                                    radius
                                 }));
                             }
                         }
@@ -559,10 +562,12 @@ impl LayoutNode {
                         if color.a() > 0 {
                             let pos = self.position.unwrap_or(Vec2::ZERO);
                             let size = self.size.unwrap_or(Vec2::ZERO);
+                            let radius = self.node.borrow().style.get("border-radius").unwrap_or(&"0px".to_string()).replace("px", "").parse::<f32>().unwrap_or(0.0);
 
                             cmds.push(DrawCommand::DrawRect(DrawRect {
                                 rect: Rect::from_two_pos(pos.to_pos2(), (pos + size).to_pos2()),
                                 color,
+                                radius
                             }));
                         }
                     }

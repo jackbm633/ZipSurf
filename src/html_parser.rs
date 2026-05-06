@@ -436,16 +436,41 @@ impl HtmlParser {
 /// ```
 /// ```
 fn get_attributes(text: &str) -> Element {
-    let parts: Vec<&str> = text.split_whitespace().collect();
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut quote_char = ' ';
+
+    for c in text.chars() {
+        if (c == '"' || c == '\'') && !in_quotes {
+            in_quotes = true;
+            quote_char = c;
+            current.push(c);
+        } else if c == quote_char && in_quotes {
+            in_quotes = false;
+            current.push(c);
+        } else if c.is_whitespace() && !in_quotes {
+            if !current.is_empty() {
+                parts.push(current.clone());
+                current.clear();
+            }
+        } else {
+            current.push(c);
+        }
+    }
+    if !current.is_empty() {
+        parts.push(current);
+    }
+
     let tag = parts[0].to_lowercase();
     let mut attributes = HashMap::<String, String>::new();
     for attrpair in parts[1..].iter() {
         if attrpair.contains('=') {
-            let kv: Vec<&str> = attrpair.split('=').collect();
+            let kv: Vec<&str> = attrpair.splitn(2, '=').collect();
             let key = kv[0].to_string();
             let mut value = kv[1].to_string();
-            if value.len() > 2 && (value.starts_with('\'') || value.starts_with('"')) {
-                value = value.trim_matches(|c| c == '\'' || c == '"').parse().unwrap();
+            if value.len() >= 2 && (value.starts_with('\'') || value.starts_with('"')) {
+                value = value[1..value.len()-1].to_string();
             }
             attributes.insert(key.to_lowercase(), value);
         } else {
@@ -456,4 +481,3 @@ fn get_attributes(text: &str) -> Element {
     Element{tag: tag.into(),
         attributes}
 }
-

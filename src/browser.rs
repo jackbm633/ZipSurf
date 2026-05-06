@@ -170,7 +170,7 @@ impl Browser {
             DrawCommand::DrawRect(rect) => {
                 painter.rect(
                     rect.rect.translate(Vec2::new(0.0, -scroll_y)),
-                    0.0,
+                    rect.radius,
                     rect.color,
                     Stroke::new(0.0, Color32::BLACK),
                     StrokeKind::Middle,

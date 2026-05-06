@@ -469,6 +469,7 @@ impl Tab {
                             let body = st.request(None, this.borrow().cookie_jar.clone());
                             match body {
                                 Ok(bd) => {
+                                    println!("{}", bd.content);
                                     this.borrow_mut().rules.append(
                                         &mut CssParser::new(&*bd.content).parse().unwrap_or(vec![]),
                                     );
@@ -618,8 +619,11 @@ impl Tab {
             }
 
             if let Some(style_str) = inline_style_attr {
+                println!("LOCAL STYLES{:?}", style_str);
+
                 let mut parser = CssParser::new(&style_str);
                 if let Ok(pairs_map) = parser.body() {
+                    println!("LOCAL STYLES{:?}", pairs_map);
                     for (key, value) in pairs_map {
                         node_ref.style.insert(key, value);
                     }
@@ -791,6 +795,7 @@ pub(crate) struct DrawRect {
     /// # Usage
     /// This field can be read or modified directly in structs where it is declared as `pub`.
     pub color: Color32,
+    pub radius: f32
 }
 
 pub(crate) struct DrawOutline {

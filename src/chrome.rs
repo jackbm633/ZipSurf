@@ -111,6 +111,7 @@ impl Chrome {
                 rect: Rect::from_two_pos(
                     Pos2::new(0.0, 0.0), Pos2::new(WIDTH, self.bottom())),
                 color: Color32::WHITE,
+                radius: 0.0,
             }
         ));
 
