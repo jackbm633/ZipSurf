@@ -516,9 +516,10 @@ impl LayoutNode {
 
             LayoutNodeType::Block(_blk) => {
                 if let HtmlNodeType::Element(_ele) = &self.node.borrow().node_type {
-                    let bgcolor = self.node.borrow().style.get("background-color")
+                    let node_borrow = self.node.borrow();
+                    let bgcolor = node_borrow.style.get("background-color")
+                        .or_else(|| node_borrow.style.get("background"))
                         .unwrap_or(&"transparent".to_string()).clone();
-
 
                     if let Ok(color_parse) = csscolorparser::parse(&bgcolor) {
                         if let Ok(color) = Color32::from_hex(&color_parse.to_css_hex()) {
