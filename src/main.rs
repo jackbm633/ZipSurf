@@ -17,6 +17,7 @@ mod browser;
 mod chrome;
 mod rect;
 mod js_context;
+mod task;
 
 fn main() -> eframe::Result<(), eframe::Error> {
 
