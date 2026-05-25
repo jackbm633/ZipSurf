@@ -40,6 +40,8 @@ use crate::js_context::JsContext;
 use crate::layout::{LayoutNode, VSTEP};
 use crate::node::{HtmlNode, HtmlNodeType};
 use crate::selector::Selector;
+use crate::task::Task;
+use crate::task_runner::TaskRunner;
 use crate::url::Url;
 use eframe::egui;
 use egui::{Color32, Context, Galley, Pos2, Rect, Vec2};
@@ -189,7 +191,8 @@ pub struct Tab {
     needs_redraw: bool,
     pub(crate) js: Option<Rc<JsContext>>,
     pub(crate) cookie_jar: Rc<RefCell<HashMap<String, (String, HashMap<String, String>)>>>,
-    allowed_origins: Option<Vec<String>>
+    allowed_origins: Option<Vec<String>>,
+    pub(crate) task_runner: Option<TaskRunner>
 }
 
 const SCROLL_STEP: f32 = 100.0;
@@ -213,7 +216,8 @@ impl Default for Tab {
             needs_redraw: true,
             js: None,
             cookie_jar: Rc::new(RefCell::new(HashMap::new())),
-            allowed_origins: None
+            allowed_origins: None,
+            task_runner: None
         }
     }
 }
@@ -226,14 +230,23 @@ impl Tab {
     ///
     /// # Arguments
     /// * `cc` - Integration context providing access to the egui render state.
-    pub fn new(cc: &Context, height: f32, cookie_jar: Rc<RefCell<HashMap<String, (String, HashMap<String, String>)>>>) -> Self {
+    pub fn new(cc: &Context, height: f32, cookie_jar: Rc<RefCell<HashMap<String, (String, HashMap<String, String>)>>>) -> Rc<RefCell<Self>> {
         cc.set_visuals(egui::Visuals::light());
 
-        Self {
+        let tab = Self {
             tab_height: height,
             cookie_jar: cookie_jar.clone(),
             ..Default::default()
-        }
+        };
+
+        let tab_rc = Rc::new(RefCell::new(tab));
+
+        tab_rc.borrow_mut().task_runner = Some(TaskRunner {
+            tab: tab_rc.clone(),
+            tasks: vec![]
+        });
+
+        tab_rc
     }
 
     pub fn update_layout(&mut self, ctx: &egui::Context) {
@@ -454,7 +467,14 @@ impl Tab {
                             let body = st.request(None, this.borrow().cookie_jar.clone());
                             match body {
                                 Ok(bd) => {
-                                    this.borrow().js.as_ref().unwrap().run::<()>(&*script, &*bd.content);
+                                    let task = Task::new({
+                                        let script_content = bd.content.clone();
+                                        let js_ctx = this.borrow().js.clone().unwrap();
+                                        move || {
+                                            js_ctx.run::<()>(&*script_content, &*bd.content);
+                                        }
+                                    });
+                                    this.borrow_mut().task_runner.as_mut().unwrap().schedule_task(task);
                                 }
                                 Err(_) => {}
                             }

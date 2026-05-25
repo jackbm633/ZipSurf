@@ -62,7 +62,7 @@ impl Browser {
         cc.egui_ctx.set_visuals(egui::Visuals::light());
         Self::setup_custom_fonts(&cc.egui_ctx);
         let cookie_jar = Rc::new(RefCell::new(HashMap::new()));
-        let tab = Rc::new(RefCell::new(Tab::new(&cc.egui_ctx, 0.0, cookie_jar.clone())));
+        let tab = Tab::new(&cc.egui_ctx, 0.0, cookie_jar.clone());
         let browser = Rc::new(RefCell::new(
             Browser { tabs: vec![tab.clone()], current_tab: tab.clone(),
             chrome: Rc::new(RefCell::new(Chrome::new())),
@@ -82,7 +82,7 @@ impl Browser {
 
     pub fn new_tab(&mut self, cc: &Context, url: Url)
     {
-        let tab = Rc::new(RefCell::new(Tab::new(cc, HEIGHT - self.chrome.borrow().bottom(), self.cookie_jar.clone())));
+        let tab = Tab::new(cc, HEIGHT - self.chrome.borrow().bottom(), self.cookie_jar.clone());
         Tab::load(tab.clone(), url, None);
         self.tabs.push(tab.clone());
         self.current_tab = tab.clone();
@@ -208,6 +208,8 @@ impl eframe::App for Browser {
             tab.update_layout(ui.ctx());
         }
         self.chrome.borrow_mut().draw(ui.ctx(), &*self.tabs, &self.current_tab);
+
+        self.current_tab.borrow_mut().task_runner.as_mut().unwrap().run();
 
         if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
             self.current_tab.borrow_mut().scroll_down();
