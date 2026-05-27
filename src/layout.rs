@@ -6,7 +6,7 @@ use eframe::epaint::{Color32, FontFamily, FontId};
 use egui::{Context, Galley, Rect, Vec2};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 pub const HSTEP: f32 = 13.0;
 pub const VSTEP: f32 = 17.0;
@@ -55,10 +55,10 @@ const INPUT_WIDTH_PX: f32 = 200.0;
 ///                    drawing instructions (e.g., positioning and styles) for the graphical
 ///                    representation of the node.
 pub struct LayoutNode {
-    pub(crate) node: Rc<RefCell<HtmlNode>>,
-    pub(crate) parent: Option<Rc<RefCell<LayoutNode>>>,
-    children: Vec<Rc<RefCell<LayoutNode>>>,
-    previous: Option<Rc<RefCell<LayoutNode>>>,
+    pub(crate) node: Arc<RwLock<HtmlNode>>,
+    pub(crate) parent: Option<Arc<RwLock<LayoutNode>>>,
+    children: Vec<Arc<RwLock<LayoutNode>>>,
+    previous: Option<Arc<RwLock<LayoutNode>>>,
     pub(crate) content: LayoutNodeType,
     pub(crate) position: Option<Vec2>,
     pub(crate) size: Option<Vec2>,
@@ -96,8 +96,8 @@ impl LayoutNode {
     ///   (`Rc<RefCell>`), intended for storing renderable items.
     ///
     /// This is a utility method useful for layout tree creation in browsers or UI systems.
-    pub fn new_document(node: Rc<RefCell<HtmlNode>>) -> Rc<RefCell<LayoutNode>> {
-        Rc::new(RefCell::new(Self {
+    pub fn new_document(node: Arc<RwLock<HtmlNode>>) -> Arc<RwLock<LayoutNode>> {
+        Arc::new(RwLock::new(Self {
             node,
             parent: None,
             children: Vec::new(),
@@ -137,8 +137,8 @@ impl LayoutNode {
     /// // The new_line_node is now ready to be added to the parent's list of children.
     /// ```
     /// ```
-    pub fn new_line(node: Rc<RefCell<HtmlNode>>, parent: Rc<RefCell<LayoutNode>>) -> Rc<RefCell<LayoutNode>> {
-        Rc::new(RefCell::new(Self {
+    pub fn new_line(node: Arc<RwLock<HtmlNode>>, parent: Arc<RwLock<LayoutNode>>) -> Arc<RwLock<LayoutNode>> {
+        Arc::new(RwLock::new(Self {
             node, // Use the passed HTML node
             parent: Some(parent),
             children: Vec::new(),
@@ -149,9 +149,9 @@ impl LayoutNode {
         }))
     }
 
-    pub(crate) fn tree_to_vec(tree: Rc<RefCell<LayoutNode>>, vec: &mut Vec<Rc<RefCell<LayoutNode>>>) -> &Vec<Rc<RefCell<LayoutNode>>> {
+    pub(crate) fn tree_to_vec(tree: Arc<RwLock<LayoutNode>>, vec: &mut Vec<Arc<RwLock<LayoutNode>>>) -> &Vec<Arc<RwLock<LayoutNode>>> {
         vec.push(tree.clone());
-        for child in tree.borrow().children.clone() {
+        for child in tree.read().unwrap().children.clone() {
             Self::tree_to_vec(child, vec);
         }
 
@@ -207,8 +207,8 @@ impl LayoutNode {
     /// that the parent node and text node are part of a consistent layout hierarchy.
     /// ```
     /// Changed: Now takes `node` explicitly
-    pub fn new_text(node: Rc<RefCell<HtmlNode>>, parent: Rc<RefCell<LayoutNode>>, text_layout: TextLayout, size: Vec2) -> Rc<RefCell<LayoutNode>> {
-        Rc::new(RefCell::new(Self {
+    pub fn new_text(node: Arc<RwLock<HtmlNode>>, parent: Arc<RwLock<LayoutNode>>, text_layout: TextLayout, size: Vec2) -> Arc<RwLock<LayoutNode>> {
+        Arc::new(RwLock::new(Self {
             node, // Use the passed HTML node
             parent: Some(parent),
             children: Vec::new(),
@@ -222,13 +222,13 @@ impl LayoutNode {
     /// Creates a new `LayoutNode` of type `Block` with the given parameters.
     ///
     /// # Parameters
-    /// - `node`: An `Rc<RefCell<HtmlNode>>` representing the HTML node associated with this layout node.
-    /// - `parent`: An optional `Rc<RefCell<LayoutNode>>` representing the parent layout node, or `None` if this is a root layout node.
-    /// - `previous`: An optional `Rc<RefCell<LayoutNode>>` representing the previous sibling layout node, or `None` if there is no previous sibling.
+    /// - `node`: An `Arc<RwLock<HtmlNode>>` representing the HTML node associated with this layout node.
+    /// - `parent`: An optional `Arc<RwLock<LayoutNode>>` representing the parent layout node, or `None` if this is a root layout node.
+    /// - `previous`: An optional `Arc<RwLock<LayoutNode>>` representing the previous sibling layout node, or `None` if there is no previous sibling.
     /// - `context`: A `Context` struct containing necessary information such as styling, configuration, or environment details for layout computations.
     ///
     /// # Returns
-    /// Returns an `Rc<RefCell<LayoutNode>>` representing the newly created layout node.
+    /// Returns an `Arc<RwLock<LayoutNode>>` representing the newly created layout node.
     ///
     /// # LayoutNode Details
     /// - This function specifically initializes a node of type `Block`, making it suitable for block-level content.
@@ -238,7 +238,7 @@ impl LayoutNode {
     ///   - `font_size`: Set to `16.0`.
     /// - A default `FontId` is assigned, and `space_width` is initialized to `0.0`.
     /// - The `cursor_x` and `cursor_y` fields are initialized to `0.0`.
-    /// - The `display_list` is initialized as an empty vector wrapped in an `Rc<RefCell<_>>`, allowing for dynamic updates to the graphical representation.
+    /// - The `display_list` is initialized as an empty vector wrapped in an `Arc<RwLock<_>>`, allowing for dynamic updates to the graphical representation.
     ///
     /// # Usage
     /// This function is intended to construct layout nodes in a UI rendering engine or similar system, where each layout node can represent a piece of the rendered structure.
@@ -248,11 +248,11 @@ impl LayoutNode {
     /// let context = Context::default();
     /// let layout_node = LayoutNode::new_block(html_node, None, None, context);
     /// ```
-    pub fn new_block(node: Rc<RefCell<HtmlNode>>,
-                     parent: Option<Rc<RefCell<LayoutNode>>>,
-                     previous: Option<Rc<RefCell<LayoutNode>>>,
-                     context: Context) -> Rc<RefCell<LayoutNode>> {
-        Rc::new(RefCell::new(Self {
+    pub fn new_block(node: Arc<RwLock<HtmlNode>>,
+                     parent: Option<Arc<RwLock<LayoutNode>>>,
+                     previous: Option<Arc<RwLock<LayoutNode>>>,
+                     context: Context) -> Arc<RwLock<LayoutNode>> {
+        Arc::new(RwLock::new(Self {
             node,
             parent,
             children: vec![],
@@ -326,50 +326,50 @@ impl LayoutNode {
     ///
     /// In the example above, a `Document` node is processed using the `layout` function,
     /// which creates child blocks, updates their layout, and synchronizes display lists.
-    pub fn layout(node: Rc<RefCell<LayoutNode>>, context: Context) {
+    pub fn layout(node: Arc<RwLock<LayoutNode>>, context: Context) {
         // 1. Identify what type of node we are dealing with.
         // We use a scoped block or a temporary variable to ensure the borrow is dropped immediately.
-        let is_block = matches!(node.borrow().content, LayoutNodeType::Block(_));
-        let is_doc = matches!(node.borrow().content, LayoutNodeType::Document);
+        let is_block = matches!(node.read().unwrap().content, LayoutNodeType::Block(_));
+        let is_doc = matches!(node.read().unwrap().content, LayoutNodeType::Document);
 
         if is_block {
             // Prepare data needed for the block logic
-            let inner_node_ptr = node.borrow().node.clone();
+            let inner_node_ptr = node.read().unwrap().node.clone();
 
             let mode = Self::layout_mode(inner_node_ptr.clone());
             let y: f32;
-            if node.borrow().previous.is_some() {
-                y = node.borrow().previous.clone().unwrap().borrow().position.unwrap().y
-                    + node.borrow().previous.clone().unwrap().borrow().size.unwrap().y;
+            if node.read().unwrap().previous.is_some() {
+                y = node.read().unwrap().previous.clone().unwrap().read().unwrap().position.unwrap().y
+                    + node.read().unwrap().previous.clone().unwrap().read().unwrap().size.unwrap().y;
             } else {
-                y = node.borrow().parent.clone().unwrap().borrow().position.unwrap().y;
+                y = node.read().unwrap().parent.clone().unwrap().read().unwrap().position.unwrap().y;
             }
-            let x = node.borrow().parent.clone().unwrap().borrow().position.unwrap().x;
-            let width = node.borrow().parent.clone().unwrap().borrow().size.unwrap().x;
+            let x = node.read().unwrap().parent.clone().unwrap().read().unwrap().position.unwrap().x;
+            let width = node.read().unwrap().parent.clone().unwrap().read().unwrap().size.unwrap().x;
             let pos = Some(Vec2::new(x, y));
             let size = Some(Vec2::new(width, 0.0));
             {
-                let mut node_borrow = node.borrow_mut();
+                let mut node_borrow = node.write().unwrap();
                 node_borrow.position = pos;
                 node_borrow.size = size;
             }
             match mode {
                 Block => {
 
-                    let mut previous: Option<Rc<RefCell<LayoutNode>>> = None;
-                    for child in inner_node_ptr.borrow().children.clone(){
+                    let mut previous: Option<Arc<RwLock<LayoutNode>>> = None;
+                    for child in inner_node_ptr.read().unwrap().children.clone(){
                         let next = Self::new_block(child.clone(),
                                                    Some(node.clone()),
                                                    previous.clone(),
                                                    context.clone());
-                        node.borrow_mut().children.push(next.clone());
+                        node.write().unwrap().children.push(next.clone());
                         previous = Some(next);
                     }
                 }
                 Inline => {
                     let outer_node_ptr = node.clone();
                     // Re-borrow mutably only for the block work
-                    let mut node_borrow = node.borrow_mut();
+                    let mut node_borrow = node.write().unwrap();
 
                     // Destructure to split borrows, allowing simultaneous access to fields
                     let LayoutNode {
@@ -403,7 +403,7 @@ impl LayoutNode {
                 }
             }
 
-            for layout in node.borrow().children.iter() {
+            for layout in node.read().unwrap().children.iter() {
                 Self::layout(layout.clone(), context.clone());
             }
 
@@ -412,12 +412,12 @@ impl LayoutNode {
 
                 }
                 Block => {
-                    let mut node_borrow = node.borrow_mut();
+                    let mut node_borrow = node.write().unwrap();
 
                     // 1. Calculate height based on children
                     let total_height: f32 = node_borrow.children
                         .iter()
-                        .map(|c| c.borrow().size.unwrap().y)
+                        .map(|c| c.read().unwrap().size.unwrap().y)
                         .sum();
 
                     node_borrow.size = Some(Vec2::new(size.unwrap().x, total_height));
@@ -427,21 +427,21 @@ impl LayoutNode {
 
             // Borrow is dropped here when node_borrow goes out of scope
         } else if is_doc {
-            let inner_node_ptr = node.borrow().node.clone();
+            let inner_node_ptr = node.read().unwrap().node.clone();
 
-            node.borrow_mut().position = Some(Vec2::new(HSTEP, VSTEP));
-            node.borrow_mut().size = Some(Vec2::new(WIDTH - 2.0*HSTEP, 0.0));
+            node.write().unwrap().position = Some(Vec2::new(HSTEP, VSTEP));
+            node.write().unwrap().size = Some(Vec2::new(WIDTH - 2.0*HSTEP, 0.0));
             // Create the child
             let child = Self::new_block(inner_node_ptr, Some(node.clone()), None, context.clone());
 
             // Update children list and drop borrow immediately
-            node.borrow_mut().children.push(child.clone());
+            node.write().unwrap().children.push(child.clone());
 
             // Perform recursive layout (node is currently unborrowed)
             Self::layout(child.clone(), context);
-            let child_size = child.borrow().size.unwrap();
+            let child_size = child.read().unwrap().size.unwrap();
 
-            node.borrow_mut().size = Some(Vec2::new(WIDTH - 2.0 * HSTEP, child_size.y));
+            node.write().unwrap().size = Some(Vec2::new(WIDTH - 2.0 * HSTEP, child_size.y));
         }
     }
 
@@ -515,8 +515,8 @@ impl LayoutNode {
             LayoutNodeType::Document => {},
 
             LayoutNodeType::Block(_blk) => {
-                if let HtmlNodeType::Element(_ele) = &self.node.borrow().node_type {
-                    let node_borrow = self.node.borrow();
+                if let HtmlNodeType::Element(_ele) = &self.node.read().unwrap().node_type {
+                    let node_borrow = self.node.read().unwrap();
                     let bgcolor = node_borrow.style.get("background-color")
                         .or_else(|| node_borrow.style.get("background"))
                         .unwrap_or(&"transparent".to_string()).clone();
@@ -529,7 +529,7 @@ impl LayoutNode {
                                 let pos = self.position.unwrap_or(Vec2::ZERO);
                                 let size = self.size.unwrap_or(Vec2::ZERO);
 
-                                let radius = self.node.borrow().style.get("border-radius").unwrap_or(&"0px".to_string()).replace("px", "").parse::<f32>().unwrap_or(0.0);
+                                let radius = self.node.read().unwrap().style.get("border-radius").unwrap_or(&"0px".to_string()).replace("px", "").parse::<f32>().unwrap_or(0.0);
                                 cmds.push(DrawCommand::DrawRect(DrawRect {
                                     rect: Rect::from_two_pos(pos.to_pos2(), (pos + size).to_pos2()),
                                     color,
@@ -556,14 +556,14 @@ impl LayoutNode {
                 }));
             },
             LayoutNodeType::Input(input) => {
-                let bgcolor = self.node.borrow().style.get("background-color")
+                let bgcolor = self.node.read().unwrap().style.get("background-color")
                     .unwrap_or(&"transparent".to_string()).clone();
                 if let Ok(color_parse) = csscolorparser::parse(&bgcolor) {
                     if let Ok(color) = Color32::from_hex(&color_parse.to_css_hex()) {
                         if color.a() > 0 {
                             let pos = self.position.unwrap_or(Vec2::ZERO);
                             let size = self.size.unwrap_or(Vec2::ZERO);
-                            let radius = self.node.borrow().style.get("border-radius").unwrap_or(&"0px".to_string()).replace("px", "").parse::<f32>().unwrap_or(0.0);
+                            let radius = self.node.read().unwrap().style.get("border-radius").unwrap_or(&"0px".to_string()).replace("px", "").parse::<f32>().unwrap_or(0.0);
 
                             cmds.push(DrawCommand::DrawRect(DrawRect {
                                 rect: Rect::from_two_pos(pos.to_pos2(), (pos + size).to_pos2()),
@@ -574,13 +574,13 @@ impl LayoutNode {
                     }
                 }
 
-                let node_borrow = self.node.borrow();
+                let node_borrow = self.node.read().unwrap();
                 match &node_borrow.node_type {
                     HtmlNodeType::Element(ele) if ele.tag == "input" => {
                         ele.attributes.get("value").cloned().unwrap_or_default()
                     }
                     HtmlNodeType::Element(ele) if ele.tag == "button" && node_borrow.children.len() == 1 => {
-                        let first_child = node_borrow.children.first().unwrap().borrow();
+                        let first_child = node_borrow.children.first().unwrap().read().unwrap();
                         if let HtmlNodeType::Text(txt) = &first_child.node_type {
                             txt.text.to_owned()
                         } else {
@@ -597,7 +597,7 @@ impl LayoutNode {
                     y: pos.y,
                     galley: input.galley.clone(),
                 }));
-                if self.node.borrow().is_focused {
+                if self.node.read().unwrap().is_focused {
                     let cx = pos.x + 5.0 + input.galley.size().x; // Added 5.0 padding here
                     cmds.push(DrawCommand::DrawLine(
                         DrawLine {
@@ -649,15 +649,15 @@ impl LayoutNode {
     /// let mut display_list: Vec<DrawText> = Vec::new();
     /// paint_tree(root_node, &mut display_list);
     /// ```
-    pub fn paint_tree(node: Rc<RefCell<LayoutNode>>, display_list: &mut Vec<DrawCommand>, accumulated_offset: Vec2) {
+    pub fn paint_tree(node: Arc<RwLock<LayoutNode>>, display_list: &mut Vec<DrawCommand>, accumulated_offset: Vec2) {
         // 1. Ask the node to paint itself at the given offset
-        if node.borrow().should_paint()
+        if node.read().unwrap().should_paint()
         {
-            display_list.append(&mut node.borrow().paint());
+            display_list.append(&mut node.read().unwrap().paint());
         }
 
         // 2. Calculate the offset for the children
-        let node_borrow = node.borrow();
+        let node_borrow = node.read().unwrap();
 
         // CRITICAL: Determine coordinate space
         // Blocks in your system currently store ABSOLUTE positions.
@@ -711,19 +711,19 @@ impl LayoutNode {
     /// assert_eq!(mode, LayoutMode::Inline);
     /// ```
     /// ```
-    fn layout_mode(layout_node: Rc<RefCell<HtmlNode>>) -> LayoutMode {
-        match layout_node.borrow().node_type {
+    fn layout_mode(layout_node: Arc<RwLock<HtmlNode>>) -> LayoutMode {
+        match layout_node.read().unwrap().node_type {
             HtmlNodeType::Element(_) => {
-                if layout_node.borrow().children.iter().any(|c| {
-                    match &c.borrow().node_type {
+                if layout_node.read().unwrap().children.iter().any(|c| {
+                    match &c.read().unwrap().node_type {
                         HtmlNodeType::Element(ele) => {
                             BLOCK_ELEMENTS.contains(&&*ele.tag)
                         },
                         _ => false
                     }
                 }) { Block}
-                else if !layout_node.borrow().children.is_empty() ||
-                    matches!(layout_node.borrow().node_type,
+                else if !layout_node.read().unwrap().children.is_empty() ||
+                    matches!(layout_node.read().unwrap().node_type,
                         HtmlNodeType::Element(ref ele) if ele.tag == "input") {
                     Inline
                 }
@@ -739,9 +739,9 @@ impl LayoutNode {
         match self.content {
             LayoutNodeType::Document => true,
             LayoutNodeType::Block(_) => {
-                matches!(self.node.borrow().node_type,
+                matches!(self.node.read().unwrap().node_type,
                         HtmlNodeType::Element(ref ele) if ele.tag != "input") &&
-                    matches!(self.node.borrow().node_type,
+                    matches!(self.node.read().unwrap().node_type,
                         HtmlNodeType::Element(ref ele) if ele.tag != "button")
             },
             LayoutNodeType::Line(_) => true,
@@ -932,15 +932,15 @@ pub struct BlockLayout {
 struct BlockComposer<'a> {
     layout: &'a mut BlockLayout,
     // CHANGED: We access the parent's children list directly via split borrow
-    children: &'a mut Vec<Rc<RefCell<LayoutNode>>>,
+    children: &'a mut Vec<Arc<RwLock<LayoutNode>>>,
     // We keep the parent struct strictly for reference/parent pointers, not for borrowing data
-    parent_ptr: Rc<RefCell<LayoutNode>>,
+    parent_ptr: Arc<RwLock<LayoutNode>>,
     // We need the block's HTML node to create Line nodes
-    block_html_node: Rc<RefCell<HtmlNode>>,
+    block_html_node: Arc<RwLock<HtmlNode>>,
 
     outer_position: &'a mut Option<Vec2>,
     outer_size: &'a mut Option<Vec2>,
-    current_line_nodes: Vec<Rc<RefCell<LayoutNode>>>,
+    current_line_nodes: Vec<Arc<RwLock<LayoutNode>>>,
 }
 
 impl<'a> BlockComposer<'a> {
@@ -1032,23 +1032,23 @@ impl<'a> BlockComposer<'a> {
     /// ```
     /// some_layout.word("example");
     /// ```
-    fn word(&mut self, word: &str, node: Rc<RefCell<HtmlNode>>) {
-        let weight = node.borrow().style.get("font-weight").unwrap_or(&"normal".to_string()).clone();
+    fn word(&mut self, word: &str, node: Arc<RwLock<HtmlNode>>) {
+        let weight = node.read().unwrap().style.get("font-weight").unwrap_or(&"normal".to_string()).clone();
         match weight.as_str() {
             "bold" => self.layout.font_weight = "bold".into(),
             _ => self.layout.font_weight = "".into(),
         }
 
-        let style = node.borrow().style.get("font-style").unwrap_or(&"normal".to_string()).clone();
+        let style = node.read().unwrap().style.get("font-style").unwrap_or(&"normal".to_string()).clone();
         match style.as_str() {
             "italic" => self.layout.font_style = "italic".into(),
             _ => self.layout.font_style = "".into(),
         };
 
-        let size = node.borrow().style.get("font-size").unwrap_or(&"16px".to_string()).clone().replace("px", "").parse::<f32>().unwrap();
+        let size = node.read().unwrap().style.get("font-size").unwrap_or(&"16px".to_string()).clone().replace("px", "").parse::<f32>().unwrap();
         self.layout.font_size = size;
         self.update_font();
-        let color_parse = csscolorparser::parse(node.borrow().style.get("color").unwrap_or(&"black".to_string()).as_str());
+        let color_parse = csscolorparser::parse(node.read().unwrap().style.get("color").unwrap_or(&"black".to_string()).as_str());
         let color = Color32::from_hex(&*color_parse.unwrap().to_css_hex()).unwrap();
 
 
@@ -1077,7 +1077,7 @@ impl<'a> BlockComposer<'a> {
         );
 
         // Set the relative X position immediately
-        text_node.borrow_mut().position = Some(Vec2::new(self.layout.cursor_x, 0.0));
+        text_node.write().unwrap().position = Some(Vec2::new(self.layout.cursor_x, 0.0));
 
         // 6. Add to pending buffer
         self.current_line_nodes.push(text_node);
@@ -1135,7 +1135,7 @@ impl<'a> BlockComposer<'a> {
         let mut max_descent: f32 = 0.0;
 
         for node in &self.current_line_nodes {
-            match &node.borrow().content {
+            match &node.read().unwrap().content {
                 LayoutNodeType::Text(txt) => {
                     if let Some(row) = txt.galley.rows.first() {
                         let ascent = row.row.glyphs.first().map(|g| g.font_ascent).unwrap_or(0.0);
@@ -1177,17 +1177,17 @@ impl<'a> BlockComposer<'a> {
             self.parent_ptr.clone()
         );
 
-        line_node.borrow_mut().position = Some(line_abs_pos);
-        line_node.borrow_mut().size = Some(Vec2::new(self.outer_size.unwrap().x, line_height));
+        line_node.write().unwrap().position = Some(line_abs_pos);
+        line_node.write().unwrap().size = Some(Vec2::new(self.outer_size.unwrap().x, line_height));
 
-        if let LayoutNodeType::Line(l) = &mut line_node.borrow_mut().content {
+        if let LayoutNodeType::Line(l) = &mut line_node.write().unwrap().content {
             l.max_ascent = max_ascent;
             l.max_descent = max_descent;
         }
 
         // 4. Update Children (Text & Input Nodes) with Absolute Positions
         for child_node in &self.current_line_nodes {
-            let mut child = child_node.borrow_mut();
+            let mut child = child_node.write().unwrap();
 
             // Parent pointer update
             child.parent = Some(line_node.clone());
@@ -1217,7 +1217,7 @@ impl<'a> BlockComposer<'a> {
         }
 
         // Move children into the line
-        line_node.borrow_mut().children = self.current_line_nodes.drain(..).collect();
+        line_node.write().unwrap().children = self.current_line_nodes.drain(..).collect();
 
         // Add Line to Block
         self.children.push(line_node);
@@ -1279,14 +1279,14 @@ impl<'a> BlockComposer<'a> {
     ///     - `children`: A list of child nodes.
     /// * `ProcessText`: Represents a text node and contains:
     ///     - `text`: The text content of the node.
-    fn recurse(&mut self, tree: Rc<RefCell<HtmlNode>>) {
+    fn recurse(&mut self, tree: Arc<RwLock<HtmlNode>>) {
         enum Action {
-            ProcessElement { tag: String, children: Vec<Rc<RefCell<HtmlNode>>> },
+            ProcessElement { tag: String, children: Vec<Arc<RwLock<HtmlNode>>> },
             ProcessText(String),
         }
 
         let (action, node_ref) = {
-            let borrowed = tree.borrow();
+            let borrowed = tree.read().unwrap();
             let action = match &borrowed.node_type {
                 HtmlNodeType::Element(ele) => Action::ProcessElement {
                     tag: ele.tag.clone().into(),
@@ -1337,14 +1337,14 @@ impl<'a> BlockComposer<'a> {
         self.layout.space_width = space_galley.size().x;
     }
 
-    fn input(&mut self, node: Rc<RefCell<HtmlNode>>) {
-        let node_borrow = node.borrow();
+    fn input(&mut self, node: Arc<RwLock<HtmlNode>>) {
+        let node_borrow = node.read().unwrap();
         let text = match &node_borrow.node_type {
             HtmlNodeType::Element(ele) if ele.tag == "input" => {
                 ele.attributes.get("value").cloned().unwrap_or_default()
             }
             HtmlNodeType::Element(ele) if ele.tag == "button" && node_borrow.children.len() == 1 => {
-                let first_child = node_borrow.children.first().unwrap().borrow();
+                let first_child = node_borrow.children.first().unwrap().read().unwrap();
                 if let HtmlNodeType::Text(txt) = &first_child.node_type {
                     txt.text.to_owned()
                 } else {
@@ -1372,7 +1372,7 @@ impl<'a> BlockComposer<'a> {
             self.flush_line();
         }
 
-        let input_node = Rc::new(RefCell::new(LayoutNode {
+        let input_node = Arc::new(RwLock::new(LayoutNode {
             node: node.clone(),
             parent: Some(self.parent_ptr.clone()),
             children: vec![],

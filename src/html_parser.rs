@@ -1,6 +1,7 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, sync::Arc};
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::RwLock;
 use crate::node::{Element, HtmlNode, HtmlNodeType, Text};
 
 /// ```
@@ -79,7 +80,7 @@ const HEAD_TAGS: [&str; 7] = ["title", "meta", "link", "style", "script", "noscr
 /// struct
 pub struct HtmlParser {
     pub(crate) body: String,
-    pub(crate) unfinished: Vec<Rc<RefCell<HtmlNode>>>
+    pub(crate) unfinished: Vec<Arc<RwLock<HtmlNode>>>
 }
 
 impl HtmlParser {
@@ -124,7 +125,7 @@ impl HtmlParser {
     ///
     /// No explicit return value is defined in the current implementation.
     /// ```
-    pub(crate) fn parse(&mut self) -> Rc<RefCell<HtmlNode>> {
+    pub(crate) fn parse(&mut self) -> Arc<RwLock<HtmlNode>> {
         let mut buffer = String::new();
         let mut in_tag = false;
         let chars: Vec<_> = self.body.chars().collect();
@@ -163,8 +164,8 @@ impl HtmlParser {
             }
             Some(parent) => {
                 let node = HtmlNode::new(HtmlNodeType::Text(Text{text: text.clone()}),
-                                         Some(Rc::clone(&parent)));
-                parent.borrow_mut().children.push(Rc::new(RefCell::new(node)));
+                                         Some(Arc::clone(&parent)));
+                parent.write().unwrap().children.push(Arc::new(RwLock::new(node)));
             }
         }
     }
@@ -235,7 +236,7 @@ impl HtmlParser {
                 }
                 Some(node) => {
                     let parent = self.unfinished.last_mut().unwrap();
-                    parent.borrow_mut().children.push(Rc::clone(&node));
+                    parent.write().unwrap().children.push(Arc::clone(&node));
                 }
             }
         } else if VOID_TAGS.contains(&element.tag.as_str()) {
@@ -245,8 +246,8 @@ impl HtmlParser {
                 }
                 Some(parent) => {
                     let node = HtmlNode::new(
-                        HtmlNodeType::Element(element), Some(Rc::clone(&parent)));
-                    parent.borrow_mut().children.push(Rc::new(RefCell::new(node)));
+                        HtmlNodeType::Element(element), Some(Arc::clone(&parent)));
+                    parent.write().unwrap().children.push(Arc::new(RwLock::new(node)));
                 }
             }
         } else {
@@ -258,7 +259,7 @@ impl HtmlParser {
             };
             let node = HtmlNode::new(
                 HtmlNodeType::Element(element), parent);
-            self.unfinished.push(Rc::new(RefCell::new(node)));
+            self.unfinished.push(Arc::new(RwLock::new(node)));
         }
     }
 
@@ -280,14 +281,14 @@ impl HtmlParser {
     /// to `pop`. It assumes that there is at least one node in the `unfinished` stack
     /// when it is called.
     /// ```
-    fn finish(&mut self) -> Rc<RefCell<HtmlNode>> {
+    fn finish(&mut self) -> Arc<RwLock<HtmlNode>> {
         if self.unfinished.is_empty() {
             self.implicit_tags(None);
         }
         while self.unfinished.len() > 1 {
             let node = self.unfinished.pop().unwrap();
             let parent = self.unfinished.last_mut().unwrap();
-            parent.borrow_mut().children.push(Rc::clone(&node));
+            parent.write().unwrap().children.push(Arc::clone(&node));
         }
         self.unfinished.pop().unwrap()
     }
@@ -353,7 +354,7 @@ impl HtmlParser {
     fn implicit_tags(&mut self, tag: Option<&str>) {
         loop {
             let open_tags = self.unfinished.iter().map(|n| {
-                match &n.borrow().node_type {
+                match &n.read().unwrap().node_type {
                     HtmlNodeType::Element(ele) => {
                         Some(ele.tag.clone())
                     }

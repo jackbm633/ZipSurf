@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::{Arc, RwLock}};
 
 use crate::{tab::Tab, task::Task};
 
@@ -6,7 +6,7 @@ use crate::{tab::Tab, task::Task};
 /// 
 /// Maintains a queue of tasks and executes them one at a time.
 pub struct TaskRunner {
-    pub tab: Rc<RefCell<Tab>>,
+    pub tab: Arc<RwLock<Tab>>,
     pub tasks: Vec<Task>
 }
 

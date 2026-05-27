@@ -1,6 +1,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
+
 
 /// Represents a node in a document structure, which can either be a tag or plain text.
 ///
@@ -68,8 +70,8 @@ pub enum HtmlNodeType {
 /// to avoid cyclic references when creating parent-child relationships.
 pub struct HtmlNode {
     pub(crate) node_type: HtmlNodeType,
-    pub(crate) children: Vec<Rc<RefCell<HtmlNode>>>,
-    pub(crate) parent: Option<Rc<RefCell<HtmlNode>>>,
+    pub(crate) children: Vec<Arc<RwLock<HtmlNode>>>,
+    pub(crate) parent: Option<Arc<RwLock<HtmlNode>>>,
     pub(crate) style: HashMap<String, String>,
     pub(crate) is_focused: bool,
 }
@@ -107,7 +109,7 @@ impl HtmlNode {
     /// let parent_node = Rc::new(RefCell::new(HtmlNode::new(HtmlNodeType::Div, None)));
     /// let child_node = HtmlNode::new(HtmlNodeType::Span, Some(parent_node.clone()));
     /// ```
-    pub(crate) fn new(node_type: HtmlNodeType, parent: Option<Rc<RefCell<HtmlNode>>>) -> HtmlNode {
+    pub(crate) fn new(node_type: HtmlNodeType, parent: Option<Arc<RwLock<HtmlNode>>>) -> HtmlNode {
         HtmlNode {
             node_type,
             children: vec![],
@@ -152,9 +154,9 @@ impl HtmlNode {
     /// - This function expects `HtmlNode` to have a `children` field, which is assumed to be a `Vec<Rc<RefCell<HtmlNode>>>`.
     /// - Cloning `Rc<RefCell<T>>` increases the reference count of the underlying object; ensure proper
     ///   handling of reference management to avoid memory leaks.
-    pub(crate) fn tree_to_vec(tree: Rc<RefCell<HtmlNode>>, vec: &mut Vec<Rc<RefCell<HtmlNode>>>) -> &Vec<Rc<RefCell<HtmlNode>>> {
+    pub(crate) fn tree_to_vec(tree: Arc<RwLock<HtmlNode>>, vec: &mut Vec<Arc<RwLock<HtmlNode>>>) -> &Vec<Arc<RwLock<HtmlNode>>> {
         vec.push(tree.clone());
-        for child in tree.borrow().children.clone() {
+        for child in tree.read().unwrap().children.clone() {
             Self::tree_to_vec(child, vec);
         }
 
@@ -163,7 +165,7 @@ impl HtmlNode {
     }
 }
 
-/// A struct representing a tag.
+    /// A struct representing a tag.
 ///
 /// The `Tag` struct is used to encapsulate a string-based tag.
 /// It can be used to represent labels, keywords, or identifiers in various contexts.

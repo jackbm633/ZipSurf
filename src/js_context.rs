@@ -2,30 +2,34 @@
 use crate::html_parser::HtmlParser;
 use crate::node::{HtmlNode, HtmlNodeType};
 use crate::tab::Tab;
+use crate::task::Task;
 use lazy_static::lazy_static;
 use rquickjs::Runtime;
 use rquickjs::{Context, Function};
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
+use std::thread::sleep;
+use std::time::Duration;
 
 lazy_static! {
     static ref RUNTIME_JS: String = include_str!("../assets/runtime.js").to_string();
 }
 pub struct JsContext {
-    context: Context,
-    nodes: Rc<RefCell<Vec<Rc<RefCell<HtmlNode>>>>>
+    context: Arc<RwLock<Context>>,
+    nodes: Arc<RwLock<Vec<Arc<RwLock<HtmlNode>>>>>
 }
 
 impl JsContext {
-    pub(crate) fn dispatch_event(&self, event_type: &str, node: Rc<RefCell<HtmlNode>>) {
+    pub(crate) fn dispatch_event(&self, event_type: &str, node: Arc<RwLock<HtmlNode>>) {
         let index = {
-            let mut nodes = self.nodes.borrow_mut();
-            nodes.iter().position(|n| Rc::ptr_eq(n, &node)).unwrap_or_else(|| {
+            let mut nodes = self.nodes.write().unwrap();
+            nodes.iter().position(|n| Arc::ptr_eq(n, &node)).unwrap_or_else(|| {
                 nodes.push(node);
                 nodes.len() - 1
             })
         };
-        self.context.with(|ctx| {
+        self.context.read().unwrap().with(|ctx| {
             let res: Result<(), _>=  ctx.eval(format!("new Node({}).dispatchEvent('{}')", index, event_type).as_str());
             match res {
                 Ok(_) => {}
@@ -43,23 +47,23 @@ impl JsContext {
 }
 
 impl JsContext {
-    pub fn new(tab: Rc<RefCell<Tab>>) -> Self {
+    pub fn new(tab: Arc<RwLock<Tab>>) -> Self {
         let runtime = Runtime::new().expect("Failed to create JS runtime");
         // Full context includes standard library features (JSON, etc.)
-        let context = Context::full(&runtime).expect("Failed to create JS context");
+        let context = Arc::new(RwLock::new(Context::full(&runtime).expect("Failed to create JS context")));
 
         let tab_clone = tab.clone();
-        let nodes = Rc::new(RefCell::new(Vec::new()));
+        let nodes: Arc<RwLock<Vec<Arc<RwLock<HtmlNode>>>>> = Arc::new(RwLock::new(Vec::new()));
         let nodes_clone = nodes.clone();
 
-        context.with(|ctx| {
+        context.read().unwrap().with(|ctx| {
             let tab_for_query = tab_clone.clone();
             let nodes_for_query = nodes_clone.clone();
 
             let log = |str: String| {println!("{}", str)};
             let query_selector_all = move |selector_str: String| {
                 let selector = CssParser::new(selector_str.as_str()).selector().unwrap();
-                let nodes_ref = tab_for_query.borrow().nodes.clone();
+                let nodes_ref = tab_for_query.read().unwrap().nodes.clone();
 
                 if let Some(root) = nodes_ref {
                     let mut elements = vec![];
@@ -69,7 +73,7 @@ impl JsContext {
                     for nd in elements {
                         if selector.matches(nd.clone()) {
                             let index = {
-                                let mut registry = nodes_for_query.borrow_mut();
+                                let mut registry = nodes_for_query.write().unwrap();
                                 let idx = registry.len();
                                 registry.push(nd);
                                 idx
@@ -84,9 +88,9 @@ impl JsContext {
             };
 
             let get_attribute = move |handle: usize, attrib: String| -> String {
-                let nodes = nodes_clone.borrow();
+                let nodes = nodes_clone.read().unwrap();
                 let element_rc = nodes.get(handle).unwrap();
-                let element = element_rc.borrow();
+                let element = element_rc.read().unwrap();
                 let attr = match &element.node_type {
                     HtmlNodeType::Element(e) => {
                         e.attributes.get(&attrib).unwrap_or(&"".to_string()).clone()
@@ -104,24 +108,24 @@ impl JsContext {
                     unfinished: vec![],
                 };
                 let parsed = parser.parse();
-                let new_node_parent = &parsed.borrow().children.first().unwrap().clone();
-                let new_children = new_node_parent.borrow().children.clone();
+                let new_node_parent = &parsed.read().unwrap().children.first().unwrap().clone();
+                let new_children = new_node_parent.read().unwrap().children.clone();
 
                 let element_rc = {
-                    let nodes = nodes_for_inner_html.borrow();
+                    let nodes = nodes_for_inner_html.read().unwrap();
                     nodes.get(handle).unwrap().clone()
                 };
 
                 {
-                    let mut element = element_rc.borrow_mut();
+                    let mut element = element_rc.write().unwrap();
                     element.children = new_children.clone();
                 }
 
                     for child in new_children {
-                        child.borrow_mut().parent = Some(element_rc.clone());
+                        child.write().unwrap().parent = Some(element_rc.clone());
                     }
 
-                    if let Ok(mut tab_borrow) = ihs_tab.try_borrow_mut() {
+                    if let Ok(mut tab_borrow) = ihs_tab.try_write() {
                         tab_borrow.render();
                     } else {
                         eprintln!("RE-ENTRANT BORROW DETECTED!");
@@ -136,21 +140,43 @@ impl JsContext {
                 };
             let xml_tab = tab.clone();
             let xml_http_request_send = move |ctx: rquickjs::Ctx, _method: String, mut url: String, body: String| -> rquickjs::Result<String> {
-                let full_url = xml_tab.clone().borrow().url.clone().unwrap().resolve(url.as_mut_str());
+                let full_url = xml_tab.clone().read().unwrap().url.clone().unwrap().resolve(url.as_mut_str());
                 if Tab::allowed_request(xml_tab.clone(), full_url.clone().unwrap()) == false {
                     return Err(ctx.throw(rquickjs::Value::from_string(rquickjs::String::from_str(ctx.clone(), "CORS request blocked").unwrap())));
                 }
-                if full_url.clone().unwrap().origin() != xml_tab.clone().borrow().url.clone().unwrap().origin() {
+                if full_url.clone().unwrap().origin() != xml_tab.clone().read().unwrap().url.clone().unwrap().origin() {
                     return Err(ctx.throw(rquickjs::Value::from_string(rquickjs::String::from_str(ctx.clone(), "CORS request blocked").unwrap())));
                 }
-                let request = full_url.unwrap().request(Option::from(body), xml_tab.clone().borrow().cookie_jar.clone());
+                let request = full_url.unwrap().request(Option::from(body), xml_tab.clone().read().unwrap().cookie_jar.clone());
                 Ok(request.unwrap().content)
+            };
+            let timeout_arc = tab.clone();
+            let context_for_timeout = context.clone();
+            let set_timeout = move |_ctx: rquickjs::Ctx, code: String, timeout: u64| -> rquickjs::Result<()> {
+                let context_for_task = context_for_timeout.clone();
+                let task = Task::new(move || {
+                    sleep(Duration::from_millis(timeout));
+                    let res: Result<(), _> = context_for_task.read().unwrap().with(|ctx| ctx.eval(code.as_str()));
+                    if let Err(e) = res {
+                        if let rquickjs::Error::Exception = e {
+                            context_for_task.read().unwrap().with(|ctx| {
+                                let exception = ctx.catch();
+                                println!("JS Exception in setTimeout callback: {:?}", exception);
+                            });
+                        } else {
+                            println!("Failed to run setTimeout callback: {e}");
+                        }
+                    }
+                });
+                timeout_arc.write().unwrap().task_runner.as_mut().unwrap().schedule_task(task);
+                Ok(())
             };
             ctx.globals().set("rustGetAttribute", Function::new(ctx.clone(), get_attribute).unwrap()).unwrap();
             ctx.globals().set("rustLog", Function::new(ctx.clone(), log).unwrap()).unwrap();
             ctx.globals().set("rustInnerHtmlSet", Function::new(ctx.clone(), inner_html_set).unwrap()).unwrap();
             ctx.globals().set("rustQuerySelectorAll", Function::new(ctx.clone(), query_selector_all).unwrap()).unwrap();
             ctx.globals().set("rustXmlHttpRequestSend", Function::new(ctx.clone(), xml_http_request_send).unwrap()).unwrap();
+            ctx.globals().set("rustSetTimeout", Function::new(ctx.clone(), set_timeout).unwrap()).unwrap();
 
             let res: Result<(), _>= ctx.eval(RUNTIME_JS.as_str());
             match res {
@@ -170,15 +196,10 @@ impl JsContext {
     }
 
 
-    pub fn run<T>(&self, script_name: &str, code: &str)
-    where
-            for<'js> T: rquickjs::FromJs<'js> + 'static
+    pub fn run(&self, script_name: &str, code: &str)
     {
-        // We use the 'for<'js>' syntax to handle lifetimes generically
-        self.context.with(|ctx| {
-            // We explicitly type the result as () to tell rquickjs
-            // we don't intend to pull any JS values out of this call.
-            let result: Result<T, _> = ctx.eval::<T, _>(code);
+        self.context.read().unwrap().with(|ctx| {
+            let result: Result<(), _> = ctx.eval(code);
             match result {
                 Ok(_) => {}
                 Err(e) => {println!("Script {script_name} failed to run: {e}")}

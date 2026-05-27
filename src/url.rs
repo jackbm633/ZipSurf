@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     fmt::Debug,
     io::{BufRead, BufReader, Read, Write},
-    net::TcpStream,
+    net::TcpStream, sync::{Arc, RwLock},
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -105,7 +105,7 @@ impl Url {
     /// # Returns
     /// * `Ok(String)` - The decrypted response body.
     /// * `Err(String)` - If the connection, TLS handshake, or parsing fails.
-    pub fn request(&self, body: Option<String>, cookie_jar: Rc<RefCell<HashMap<String, (String, HashMap<String, String>)>>>) -> Result<Response, String> {
+    pub fn request(&self, body: Option<String>, cookie_jar: Arc<RwLock<HashMap<String, (String, HashMap<String, String>)>>>) -> Result<Response, String> {
         // Connect to the host on port 80
         if let Ok(tcp_stream) = TcpStream::connect(format!("{}:{}", self.host, self.port)) {
             let mut stream: Box<dyn ReadWrite> = if self.scheme == "https" {
@@ -130,7 +130,7 @@ impl Url {
                 request.push_str(&format!("Content-Length: {}\r\n", b.as_bytes().len()));
             }
 
-            if let Some(cookie) = cookie_jar.borrow().get(&self.host) {
+            if let Some(cookie) = cookie_jar.read().unwrap().get(&self.host) {
                 request.push_str(&format!("Cookie: {}\r\n", cookie.0));
             }
 
@@ -192,7 +192,7 @@ impl Url {
                         }
                     }
                 }
-                cookie_jar.borrow_mut().insert(self.host.to_string(), (cookie_parts.first().unwrap().parse().unwrap(), params));
+                cookie_jar.write().unwrap().insert(self.host.to_string(), (cookie_parts.first().unwrap().parse().unwrap(), params));
             }
             // Read the remainder of the response body.
             if response_headers.contains_key("transfer-encoding")

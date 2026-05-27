@@ -1,4 +1,5 @@
-use std::cell::RefCell;
+use std::sync::RwLock;
+use std::{cell::RefCell, sync::Arc};
 use std::rc::Rc;
 use crate::node::{HtmlNode, HtmlNodeType};
 
@@ -65,7 +66,7 @@ impl Selector {
     ///
     /// # Parameters
     /// - `self`: The current selector that is being used for matching.
-    /// - `node`: A reference-counted `HtmlNode` wrapped in a `RefCell`. This represents
+    /// - `node`: A reference-counted `HtmlNode` wrapped in a `RwLock`. This represents
     ///   the node in the DOM tree that will be checked against the selector.
     ///
     /// # Returns
@@ -97,10 +98,10 @@ impl Selector {
     ///     println!("The node does not match the selector.");
     /// }
     /// ```
-    pub(crate) fn matches(&self, mut node: Rc<RefCell<HtmlNode>>) -> bool {
+    pub(crate) fn matches(&self, mut node: Arc<RwLock<HtmlNode>>) -> bool {
         match &self.selector {
             SelectorType::Tag { tag } => {
-                match &node.borrow().node_type {
+                match &node.read().unwrap().node_type {
                     HtmlNodeType::Element(e) => {
                         e.tag == *tag
                     }
@@ -109,11 +110,11 @@ impl Selector {
             }
             SelectorType::Descendant { descendant, ancestor } => {
                 if !descendant.matches(node.clone()) {return false}
-                while node.borrow().parent.is_some() {
-                    if ancestor.matches(node.borrow().parent.clone().unwrap()) {
+                while node.read().unwrap().parent.is_some() {
+                    if ancestor.matches(node.read().unwrap().parent.clone().unwrap()) {
                         return true
                     }
-                    let new_node = node.borrow().parent.clone().unwrap();
+                    let new_node = node.read().unwrap().parent.clone().unwrap();
                     node = new_node;
                 }
                 false

@@ -5,7 +5,7 @@ use eframe::epaint::{FontFamily, FontId};
 use egui::{Color32, Context, Pos2, Rect};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 pub struct Chrome {
     font_id: Option<FontId>,
@@ -101,7 +101,7 @@ impl Chrome {
         tab_rect
     }
 
-    pub fn draw(&mut self, ctx: &egui::Context, tabs: &[Rc<RefCell<Tab>>], current_tab: &Rc<RefCell<Tab>>) {
+    pub fn draw(&mut self, ctx: &egui::Context, tabs: &[Arc<RwLock<Tab>>], current_tab: &Arc<RwLock<Tab>>) {
         self.draw_commands.clear();
         // Chrome-specific drawing logic would go here,
         // potentially using the passed 'ui' or its painter.
@@ -165,7 +165,7 @@ impl Chrome {
                 )
             );
 
-            if Rc::ptr_eq(tab_rc, current_tab) {
+            if Arc::ptr_eq(tab_rc, current_tab) {
                 self.draw_commands.push(DrawCommand::DrawLine(
                     DrawLine {
                         from: Pos2::new(0.0, bounds.bottom()),
@@ -214,7 +214,7 @@ impl Chrome {
 
         ));
 
-        let url = current_tab.borrow().url.clone().unwrap().to_string();
+        let url = current_tab.read().unwrap().url.clone().unwrap().to_string();
 
         if self.focus == Focus::AddressBar {
             let galley = ctx.fonts_mut(|f| f.layout_no_wrap(self.address_bar.parse().unwrap(),
@@ -249,7 +249,7 @@ impl Chrome {
 
     }
 
-    pub fn on_enter(&mut self,  tab: Rc<RefCell<Tab>>)
+    pub fn on_enter(&mut self,  tab: Arc<RwLock<Tab>>)
     {
         if self.focus == Focus::AddressBar
         {

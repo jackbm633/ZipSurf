@@ -51,7 +51,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::str::FromStr;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 lazy_static! {
     static ref DEFAULT_STYLE_SHEET: Vec<(Selector, HashMap<String, String>)> =
@@ -181,16 +181,16 @@ pub struct Tab {
     pub(crate) draw_commands: Vec<DrawCommand>,
     /// The current vertical scroll offset in points.
     pub(crate) scroll_y: f32,
-    pub(crate) nodes: Option<Rc<RefCell<HtmlNode>>>,
-    document: Option<Rc<RefCell<LayoutNode>>>,
+    pub(crate) nodes: Option<Arc<RwLock<HtmlNode>>>,
+    document: Option<Arc<RwLock<LayoutNode>>>,
     pub(crate) url: Option<Url>,
     pub(crate) tab_height: f32,
     history: Vec<Url>,
     rules: Vec<(Selector, HashMap<String, String>)>,
-    focus: Option<Rc<RefCell<HtmlNode>>>,
+    focus: Option<Arc<RwLock<HtmlNode>>>,
     needs_redraw: bool,
-    pub(crate) js: Option<Rc<JsContext>>,
-    pub(crate) cookie_jar: Rc<RefCell<HashMap<String, (String, HashMap<String, String>)>>>,
+    pub(crate) js: Option<Arc<JsContext>>,
+    pub(crate) cookie_jar: Arc<RwLock<HashMap<String, (String, HashMap<String, String>)>>>,
     allowed_origins: Option<Vec<String>>,
     pub(crate) task_runner: Option<TaskRunner>
 }
@@ -215,7 +215,7 @@ impl Default for Tab {
             focus: None,
             needs_redraw: true,
             js: None,
-            cookie_jar: Rc::new(RefCell::new(HashMap::new())),
+            cookie_jar: Arc::new(RwLock::new(HashMap::new())),
             allowed_origins: None,
             task_runner: None
         }
@@ -230,7 +230,7 @@ impl Tab {
     ///
     /// # Arguments
     /// * `cc` - Integration context providing access to the egui render state.
-    pub fn new(cc: &Context, height: f32, cookie_jar: Rc<RefCell<HashMap<String, (String, HashMap<String, String>)>>>) -> Rc<RefCell<Self>> {
+    pub fn new(cc: &Context, height: f32, cookie_jar: Arc<RwLock<HashMap<String, (String, HashMap<String, String>)>>>) -> Arc<RwLock<Self>> {
         cc.set_visuals(egui::Visuals::light());
 
         let tab = Self {
@@ -239,9 +239,9 @@ impl Tab {
             ..Default::default()
         };
 
-        let tab_rc = Rc::new(RefCell::new(tab));
+        let tab_rc = Arc::new(RwLock::new(tab));
 
-        tab_rc.borrow_mut().task_runner = Some(TaskRunner {
+        tab_rc.write().unwrap().task_runner = Some(TaskRunner {
             tab: tab_rc.clone(),
             tasks: vec![]
         });
@@ -273,7 +273,7 @@ impl Tab {
             Some(doc) => {
                 let max_y = f32::max(
                     0.0,
-                    doc.borrow().size.unwrap_or(Vec2::ZERO).y + 2.0 * VSTEP - self.tab_height,
+                    doc.read().unwrap().size.unwrap_or(Vec2::ZERO).y + 2.0 * VSTEP - self.tab_height,
                 );
                 self.scroll_y = (self.scroll_y + crate::tab::SCROLL_STEP).min(max_y);
             }
@@ -281,34 +281,34 @@ impl Tab {
         self.scroll_y += crate::tab::SCROLL_STEP;
     }
 
-    pub(crate) fn click(this: Rc<RefCell<Tab>>, position: Pos2) {
-        if this.borrow().focus.is_some() {
-            this.borrow().focus.clone().unwrap().borrow_mut().is_focused = false;
+    pub(crate) fn click(this: Arc<RwLock<Tab>>, position: Pos2) {
+        if this.read().unwrap().focus.is_some() {
+            this.read().unwrap().focus.clone().unwrap().write().unwrap().is_focused = false;
         }
         let mut new_pos = position.clone();
-        new_pos.y += this.borrow().scroll_y;
+        new_pos.y += this.read().unwrap().scroll_y;
 
-        let mut vec: Vec<Rc<RefCell<LayoutNode>>> = vec![];
-        let objs = LayoutNode::tree_to_vec(this.borrow().document.clone().unwrap(), &mut vec)
+        let mut vec: Vec<Arc<RwLock<LayoutNode>>> = vec![];
+        let objs = LayoutNode::tree_to_vec(this.read().unwrap().document.clone().unwrap(), &mut vec)
             .iter()
             .filter(|l| {
                 Rect::from_two_pos(
-                    l.borrow().position.unwrap().to_pos2(),
-                    (l.borrow().position.unwrap() + l.borrow().size.unwrap()).to_pos2(),
+                    l.read().unwrap().position.unwrap().to_pos2(),
+                    (l.read().unwrap().position.unwrap() + l.read().unwrap().size.unwrap()).to_pos2(),
                 )
                 .contains(new_pos)
             })
-            .collect::<Vec<&Rc<RefCell<LayoutNode>>>>();
+            .collect::<Vec<&Arc<RwLock<LayoutNode>>>>();
         if objs.len() == 0 {
             return;
         }
 
-        let mut element = objs.last().map(|&e| e.borrow().node.clone());
+        let mut element = objs.last().map(|&e| e.read().unwrap().node.clone());
         let should_render = false;
         let mut url_to_load = None;
 
         if let Some(ref el) = element {
-            if let Some(ref js) = this.borrow().js {
+            if let Some(ref js) = this.read().unwrap().js {
                 js.dispatch_event("click", el.clone());
             }
         }
@@ -317,12 +317,13 @@ impl Tab {
             let mut action_to_take = None; // Track what to do after borrow is released
 
             {
-                let mut node = current_element.borrow_mut();
+                let mut node = current_element.write().unwrap();
                 match node.node_type {
                     HtmlNodeType::Element(ref mut ele) => {
                         if ele.tag == "a" && ele.attributes.contains_key("href") {
                             let url = this
-                                .borrow()
+                                .read()
+                                .unwrap()
                                 .url
                                 .as_ref()
                                 .unwrap()
@@ -345,15 +346,15 @@ impl Tab {
             // Handle actions after the 'node' borrow is dropped
             match action_to_take {
                 Some("input") => {
-                    this.borrow_mut().focus = Some(current_element.clone());
-                    this.borrow_mut().render();
+                    this.write().unwrap().focus = Some(current_element.clone());
+                    this.write().unwrap().render();
                     break;
                 }
                 Some("button") => {
                     let mut elt = Some(current_element.clone());
                     while let Some(elt_rc) = elt {
                         let is_form_with_action = {
-                            let elt_borrow = elt_rc.borrow();
+                            let elt_borrow = elt_rc.read().unwrap();
                             if let HtmlNodeType::Element(elem) = &elt_borrow.node_type {
                                 elem.tag == "form" && elem.attributes.contains_key("action")
                             } else {
@@ -364,7 +365,7 @@ impl Tab {
                         if is_form_with_action {
                             return Tab::submit_form(this, elt_rc);
                         }
-                        elt = elt_rc.borrow().parent.clone();
+                        elt = elt_rc.read().unwrap().parent.clone();
                     }
                 }
                 _ => {}
@@ -373,13 +374,13 @@ impl Tab {
             if url_to_load.is_some() {
                 break;
             }
-            element = current_element.borrow().parent.clone();
+            element = current_element.read().unwrap().parent.clone();
         }
 
         if let Some(url) = url_to_load {
             Tab::load(this, url, None);
         } else if should_render {
-            this.borrow_mut().render();
+            this.write().unwrap().render();
         }
     }
 
@@ -391,15 +392,15 @@ impl Tab {
     ///
     /// # Errors
     /// Network failures or request timeouts are logged to `stderr`.
-    pub fn load(this: Rc<RefCell<Self>>, url: Url, body: Option<String>) {
-        let cookie_jar = this.borrow().cookie_jar.clone();
-        this.borrow_mut().url = Some(url.clone());
-        this.borrow_mut().draw_commands.clear();
-        this.borrow_mut().scroll_y = 0.0;
+    pub fn load(this: Arc<RwLock<Self>>, url: Url, body: Option<String>) {
+        let cookie_jar = this.read().unwrap().cookie_jar.clone();
+        this.write().unwrap().url = Some(url.clone());
+        this.write().unwrap().draw_commands.clear();
+        this.write().unwrap().scroll_y = 0.0;
         match url.request(body, cookie_jar) {
             Ok(body) => {
 
-                this.borrow_mut().allowed_origins = None;
+                this.write().unwrap().allowed_origins = None;
 
                 if body.headers.contains_key("content-security-policy") {
                     let csp: Vec<_> = body.headers["content-security-policy"].split_ascii_whitespace().collect();
@@ -408,7 +409,7 @@ impl Tab {
                         for origin in csp.iter().skip(1) {
                             allowed_origins.push(Url::new(origin).unwrap().origin())
                         }
-                        this.borrow_mut().allowed_origins = Some(allowed_origins);
+                        this.write().unwrap().allowed_origins = Some(allowed_origins);
                     }
                 }
 
@@ -417,13 +418,13 @@ impl Tab {
                     unfinished: vec![],
                 };
 
-                this.borrow_mut().nodes = Some(parser.parse());
-                this.borrow_mut().rules = DEFAULT_STYLE_SHEET.clone();
+                this.write().unwrap().nodes = Some(parser.parse());
+                this.write().unwrap().rules = DEFAULT_STYLE_SHEET.clone();
 
                 let links =
-                    HtmlNode::tree_to_vec(this.borrow().nodes.clone().unwrap(), &mut vec![])
+                    HtmlNode::tree_to_vec(this.read().unwrap().nodes.clone().unwrap(), &mut vec![])
                         .iter()
-                        .filter_map(|p| match &p.borrow().node_type {
+                        .filter_map(|p| match &p.read().unwrap().node_type {
                             HtmlNodeType::Element(e) => {
                                 if e.tag == "link"
                                     && e.attributes.contains_key("rel")
@@ -439,9 +440,9 @@ impl Tab {
                         .collect::<Vec<String>>();
 
                 let scripts =
-                    HtmlNode::tree_to_vec(this.borrow().nodes.clone().unwrap(), &mut vec![])
+                    HtmlNode::tree_to_vec(this.read().unwrap().nodes.clone().unwrap(), &mut vec![])
                         .iter()
-                        .filter_map(|p| match &p.borrow().node_type {
+                        .filter_map(|p| match &p.read().unwrap().node_type {
                             HtmlNodeType::Element(e) => {
                                 if e.tag == "script" && e.attributes.contains_key("src") {
                                     return Some(e.attributes.get("src").unwrap().to_string());
@@ -453,7 +454,7 @@ impl Tab {
                         .collect::<Vec<String>>();
 
                 let context = JsContext::new(this.clone());
-                this.borrow_mut().js = Some(Rc::new(context));
+                this.write().unwrap().js = Some(Arc::new(context));
 
                 for script in scripts {
                     let script_url = url.resolve(script.clone().as_mut_str());
@@ -464,17 +465,17 @@ impl Tab {
                                 println!("Blocked script");
                                 continue
                             }
-                            let body = st.request(None, this.borrow().cookie_jar.clone());
+                            let body = st.request(None, this.read().unwrap().cookie_jar.clone());
                             match body {
                                 Ok(bd) => {
                                     let task = Task::new({
                                         let script_content = bd.content.clone();
-                                        let js_ctx = this.borrow().js.clone().unwrap();
+                                        let js_ctx = this.read().unwrap().js.clone().unwrap();
                                         move || {
-                                            js_ctx.run::<()>(&*script_content, &*bd.content);
+                                            js_ctx.run(&*script_content, &*bd.content);
                                         }
                                     });
-                                    this.borrow_mut().task_runner.as_mut().unwrap().schedule_task(task);
+                                    this.write().unwrap().task_runner.as_mut().unwrap().schedule_task(task);
                                 }
                                 Err(_) => {}
                             }
@@ -486,11 +487,11 @@ impl Tab {
                     let style_url = url.resolve(link.clone().as_mut_str());
                     match style_url {
                         Ok(st) => {
-                            let body = st.request(None, this.borrow().cookie_jar.clone());
+                            let body = st.request(None, this.read().unwrap().cookie_jar.clone());
                             match body {
                                 Ok(bd) => {
                                     println!("{}", bd.content);
-                                    this.borrow_mut().rules.append(
+                                    this.write().unwrap().rules.append(
                                         &mut CssParser::new(&*bd.content).parse().unwrap_or(vec![]),
                                     );
                                 }
@@ -500,16 +501,16 @@ impl Tab {
                         Err(_) => {}
                     }
                 }
-                this.borrow_mut()
+                this.write().unwrap()
                     .rules
                     .sort_by(|a, b| Self::cascade_priority(a).cmp(&Self::cascade_priority(b)));
-                this.borrow_mut().render();
+                this.write().unwrap().render();
             }
             Err(e) => {
                 eprintln!("Error loading URL: {}", e);
             }
         }
-        this.borrow_mut().history.push(url);
+        this.write().unwrap().history.push(url);
     }
 
     pub(crate) fn render(&mut self) {
@@ -518,12 +519,12 @@ impl Tab {
         self.needs_redraw = true;
     }
 
-    pub fn go_back(this: Rc<RefCell<Self>>) {
-        if this.borrow_mut().history.len() > 1 {
-            this.borrow_mut().history.pop();
+    pub fn go_back(this: Arc<RwLock<Self>>) {
+        if this.write().unwrap().history.len() > 1 {
+            this.write().unwrap().history.pop();
             Tab::load(
                 this.clone(),
-                this.borrow().history.last().unwrap().clone(),
+                this.read().unwrap().history.last().unwrap().clone(),
                 None,
             );
         }
@@ -590,7 +591,7 @@ impl Tab {
     ///   resolve them into a `HashMap<String, String>`. Any deviations from this expected behavior may
     ///   cause a panic.
     fn style(
-        node: Option<Rc<RefCell<HtmlNode>>>,
+        node: Option<Arc<RwLock<HtmlNode>>>,
         rules: &Vec<(Selector, HashMap<String, String>)>,
     ) {
         let nd = node.expect("Browser document not initialized.");
@@ -598,14 +599,14 @@ impl Tab {
         let mut css_style_maps = Vec::new();
         let mut inherited_style_map = HashMap::<String, String>::new();
         for item in INHERITED_PROPERTIES.iter() {
-            match nd.borrow().parent {
+            match nd.read().unwrap().parent {
                 None => {
                     inherited_style_map.insert(item.0.to_string(), item.1.to_string());
                 }
                 Some(ref pt) => {
                     inherited_style_map.insert(
                         item.0.parse().unwrap(),
-                        pt.borrow()
+                        pt.read().unwrap()
                             .style
                             .get(&item.0.to_string())
                             .unwrap()
@@ -624,7 +625,7 @@ impl Tab {
 
         // Encapsulate the mutation in a block to drop the borrow_mut() before recursion
         let children = {
-            let mut node_ref = nd.borrow_mut();
+            let mut node_ref = nd.write().unwrap();
 
             let inline_style_attr = if let HtmlNodeType::Element(el) = &node_ref.node_type {
                 el.attributes.get("style").cloned()
@@ -654,16 +655,16 @@ impl Tab {
         };
 
         if nd
-            .borrow_mut()
+            .read().unwrap()
             .style
             .get("font-size")
             .unwrap()
             .ends_with("%")
         {
-            let mut node_ref = nd.borrow_mut();
+            let mut node_ref = nd.write().unwrap();
             let parent_font_size = match &node_ref.parent {
                 None => INHERITED_PROPERTIES.get("font-size").unwrap().to_string(),
-                Some(pt) => pt.borrow().style.get("font-size").unwrap().to_string(),
+                Some(pt) => pt.read().unwrap().style.get("font-size").unwrap().to_string(),
             };
 
             let node_pct =
@@ -682,9 +683,9 @@ impl Tab {
         }
     }
 
-    pub fn keypress(this: Rc<RefCell<Tab>>, keypress: &String) {
+    pub fn keypress(this: Arc<RwLock<Tab>>, keypress: &String) {
         let (focus_node, js_ctx_rc) = {
-            let tab = this.borrow();
+            let tab = this.read().unwrap();
             (tab.focus.clone(), tab.js.clone()) // Clone the Rc<JsContext>
         }; // <--- Tab borrow is dropped here!
 
@@ -697,7 +698,7 @@ impl Tab {
 
             // 2. Update the attribute
             {
-                let mut node_borrow = node.borrow_mut();
+                let mut node_borrow = node.write().unwrap();
                 if let HtmlNodeType::Element(ref mut e) = node_borrow.node_type {
                     if let Some(value) = e.attributes.get_mut("value") {
                         value.push_str(keypress);
@@ -708,18 +709,19 @@ impl Tab {
             // 3. Render
             // This will now succeed because the JS execution above has finished
             // and it didn't find Tab already borrowed.
-            this.borrow_mut().render();
+            this.write().unwrap().render();
         }
     }
 
-    fn submit_form(this: Rc<RefCell<Tab>>, html_node: Rc<RefCell<HtmlNode>>) {
-        this.borrow()
+    fn submit_form(this: Arc<RwLock<Tab>>, html_node: Arc<RwLock<HtmlNode>>) {
+        this.read()
+            .unwrap()
             .js
             .as_ref()
             .unwrap()
             .dispatch_event("submit", html_node.clone());
         let mut action = "".to_string();
-        match &html_node.clone().borrow().node_type {
+        match &html_node.clone().read().unwrap().node_type {
             HtmlNodeType::Element(e) => {
                 action = e.attributes.get("action").unwrap().clone();
             }
@@ -729,7 +731,7 @@ impl Tab {
         let mut binding = vec![];
         let inputs: Vec<_> = HtmlNode::tree_to_vec(html_node, &mut binding)
             .iter()
-            .filter(|n| match &n.borrow().node_type {
+            .filter(|n| match &n.read().unwrap().node_type {
                 HtmlNodeType::Element(e) => e.tag == "input" && e.attributes.contains_key("name"),
                 HtmlNodeType::Text(_) => false,
             })
@@ -737,7 +739,7 @@ impl Tab {
 
         let mut body: String = "".into();
         for input in inputs {
-            match &input.borrow().node_type {
+            match &input.read().unwrap().node_type {
                 HtmlNodeType::Element(e) => {
                     let name = utf8_percent_encode(&e.attributes["name"], NON_ALPHANUMERIC);
 
@@ -756,7 +758,8 @@ impl Tab {
         body.remove(0);
 
         let url = this
-            .borrow()
+            .read()
+            .unwrap()
             .url
             .clone()
             .unwrap()
@@ -765,8 +768,8 @@ impl Tab {
         Tab::load(this, url, Some(body));
     }
 
-    pub(crate) fn allowed_request(this: Rc<RefCell<Tab>>, url: Url) -> bool {
-        this.borrow().allowed_origins.is_none() || this.borrow().allowed_origins.as_ref().unwrap().contains(&url.origin())
+    pub(crate) fn allowed_request(this: Arc<RwLock<Tab>>, url: Url) -> bool {
+        this.read().unwrap().allowed_origins.is_none() || this.read().unwrap().allowed_origins.as_ref().unwrap().contains(&url.origin())
     }
 }
 

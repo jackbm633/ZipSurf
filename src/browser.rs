@@ -8,7 +8,7 @@ use egui::{Context, Painter, Ui, Vec2};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use eframe::Frame;
 
 /// A `Browser` structure that simulates a web browser with multiple tabs.
@@ -50,18 +50,18 @@ use eframe::Frame;
 /// assert_eq!(browser.current_tab.borrow().url, "https://example.com");
 /// ```
 pub struct Browser {
-    pub(crate) tabs: Vec<Rc<RefCell<Tab>>>,
-    current_tab: Rc<RefCell<Tab>>,
+    pub(crate) tabs: Vec<Arc<RwLock<Tab>>>,
+    current_tab: Arc<RwLock<Tab>>,
     chrome: Rc<RefCell<Chrome>>,
     focus: Option<String>,
-    cookie_jar: Rc<RefCell<HashMap<String, (String, HashMap<String, String>)>>>,
+    cookie_jar: Arc<RwLock<HashMap<String, (String, HashMap<String, String>)>>>,
 }
 
 impl Browser {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Rc<RefCell<Self>> {
         cc.egui_ctx.set_visuals(egui::Visuals::light());
         Self::setup_custom_fonts(&cc.egui_ctx);
-        let cookie_jar = Rc::new(RefCell::new(HashMap::new()));
+        let cookie_jar = Arc::new(RwLock::new(HashMap::new()));
         let tab = Tab::new(&cc.egui_ctx, 0.0, cookie_jar.clone());
         let browser = Rc::new(RefCell::new(
             Browser { tabs: vec![tab.clone()], current_tab: tab.clone(),
@@ -90,7 +90,7 @@ impl Browser {
 
     pub fn load_first_tab(&mut self, url: Url) {
         Tab::load(self.tabs[0].clone(), url, None);
-        self.tabs[0].borrow_mut().tab_height = HEIGHT - self.chrome.borrow().bottom();
+        self.tabs[0].write().unwrap().tab_height = HEIGHT - self.chrome.borrow().bottom();
     }
 
     fn setup_custom_fonts(ctx: &egui::Context) {
@@ -204,15 +204,15 @@ impl eframe::App for Browser {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
         self.chrome.borrow_mut().init(ui.ctx());
         {
-            let mut tab = self.current_tab.borrow_mut();
+            let mut tab = self.current_tab.write().unwrap();
             tab.update_layout(ui.ctx());
         }
         self.chrome.borrow_mut().draw(ui.ctx(), &*self.tabs, &self.current_tab);
 
-        self.current_tab.borrow_mut().task_runner.as_mut().unwrap().run();
+        self.current_tab.write().unwrap().task_runner.as_mut().unwrap().run();
 
         if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
-            self.current_tab.borrow_mut().scroll_down();
+            self.current_tab.write().unwrap().scroll_down();
         }
 
         if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
@@ -265,7 +265,7 @@ impl eframe::App for Browser {
             .frame(egui::Frame::new().fill(Color32::WHITE))
             .show_inside(ui, |ui| {
                 let painter = ui.painter();
-                let tab = self.current_tab.borrow();
+                let tab = self.current_tab.read().unwrap();
                 let scroll_y = tab.scroll_y;
                 let chrome = self.chrome.borrow();
 
