@@ -71,7 +71,7 @@ Event.prototype.preventDefault = function() {
     this.do_default = false;
 }
 
-SET_TIMEOUT_REQUESTS = {}
+globalThis.SET_TIMEOUT_REQUESTS = {}
 
 function setTimeout(callback, time_delta) {
     var handle = Object.keys(SET_TIMEOUT_REQUESTS).length;

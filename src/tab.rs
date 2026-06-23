@@ -243,7 +243,8 @@ impl Tab {
 
         tab_rc.write().unwrap().task_runner = Some(TaskRunner {
             tab: tab_rc.clone(),
-            tasks: vec![]
+            tasks: vec![],
+            condvar: Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()))
         });
 
         tab_rc

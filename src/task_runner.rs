@@ -7,7 +7,8 @@ use crate::{tab::Tab, task::Task};
 /// Maintains a queue of tasks and executes them one at a time.
 pub struct TaskRunner {
     pub tab: Arc<RwLock<Tab>>,
-    pub tasks: Vec<Task>
+    pub tasks: Vec<Task>,
+    pub condvar: Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>
 }
 
 impl TaskRunner {
@@ -16,16 +17,31 @@ impl TaskRunner {
     /// # Arguments
     /// * `task` - The task to schedule
     pub fn schedule_task(&mut self, task: Task) {
+        // Acquire the lock to ensure thread safety when modifying the task queue.
+        self.condvar.0.lock().unwrap();
         self.tasks.push(task);
+        // Notify any waiting threads that a new task has been scheduled.
+        self.condvar.1.notify_all();
+        // Release the lock after modifying the task queue.
+        self.condvar.0.unlock().unwrap();
     }
 
     /// Runs the next scheduled task in the queue.
     /// 
     /// If there are no tasks, this method does nothing.
     pub fn run(&mut self) {
+        let mut task: Option<Task> = None;
+        // Acquire the lock to ensure thread safety when accessing the task queue.
+        self.condvar.0.lock().unwrap();
         if self.tasks.len() > 0 {
-            let mut task = self.tasks.pop().unwrap();
-            task.run();
+            task = Some(self.tasks.pop().unwrap());
         }
+        self.condvar.0.unlock().unwrap();
+        if task.is_some() {
+            task.unwrap().run();
+        }
+
+        self.condvar.0.lock().unwrap();
+        self.condvar.0.unlock().unwrap();
     }
 }
