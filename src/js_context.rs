@@ -17,7 +17,8 @@ lazy_static! {
 }
 pub struct JsContext {
     context: Arc<RwLock<Context>>,
-    nodes: Arc<RwLock<Vec<Arc<RwLock<HtmlNode>>>>>
+    nodes: Arc<RwLock<Vec<Arc<RwLock<HtmlNode>>>>>,
+    pub(crate) discarded: Arc<RwLock<bool>>
 }
 
 impl JsContext {
@@ -51,7 +52,7 @@ impl JsContext {
         let runtime = Runtime::new().expect("Failed to create JS runtime");
         // Full context includes standard library features (JSON, etc.)
         let context = Arc::new(RwLock::new(Context::full(&runtime).expect("Failed to create JS context")));
-
+        let discarded_pointer = Arc::new(RwLock::new(false));
         let tab_clone = tab.clone();
         let nodes: Arc<RwLock<Vec<Arc<RwLock<HtmlNode>>>>> = Arc::new(RwLock::new(Vec::new()));
         let nodes_clone = nodes.clone();
@@ -154,8 +155,12 @@ impl JsContext {
             let context_for_timeout = context.clone();
             let set_timeout = move |_ctx: rquickjs::Ctx, code: String, timeout: u64| -> rquickjs::Result<()> {
                 let context_for_task = context_for_timeout.clone();
+                let pd = discarded_pointer.clone();
                 let task = Task::new(move || {
                     sleep(Duration::from_millis(timeout));
+                    if pd.read().unwrap().clone() == true {
+                        return;
+                    }
                     let res: Result<(), _> = context_for_task.read().unwrap().with(|ctx| ctx.eval(code.as_str()));
                     if let Err(e) = res {
                         if let rquickjs::Error::Exception = e {
@@ -192,7 +197,7 @@ impl JsContext {
             }
         });
 
-        Self { context, nodes }
+        Self { context, nodes, discarded: discarded_pointer }
     }
 
 

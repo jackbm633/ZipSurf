@@ -454,6 +454,10 @@ impl Tab {
                         })
                         .collect::<Vec<String>>();
 
+                if this.read().unwrap().js.is_some() {
+                    this.write().unwrap().js.as_mut().unwrap().discarded.write().unwrap().clone_from(&true);
+                }
+
                 let context = JsContext::new(this.clone());
                 this.write().unwrap().js = Some(Arc::new(context));
 
