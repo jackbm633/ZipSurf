@@ -18,12 +18,12 @@ impl TaskRunner {
     /// * `task` - The task to schedule
     pub fn schedule_task(&mut self, task: Task) {
         // Acquire the lock to ensure thread safety when modifying the task queue.
-        self.condvar.0.lock().unwrap();
+        let lock = self.condvar.0.lock().unwrap();
         self.tasks.push(task);
         // Notify any waiting threads that a new task has been scheduled.
         self.condvar.1.notify_all();
         // Release the lock after modifying the task queue.
-        self.condvar.0.unlock().unwrap();
+        drop(lock)    
     }
 
     /// Runs the next scheduled task in the queue.
@@ -32,16 +32,16 @@ impl TaskRunner {
     pub fn run(&mut self) {
         let mut task: Option<Task> = None;
         // Acquire the lock to ensure thread safety when accessing the task queue.
-        self.condvar.0.lock().unwrap();
+        let lock = self.condvar.0.lock().unwrap();
         if self.tasks.len() > 0 {
             task = Some(self.tasks.pop().unwrap());
         }
-        self.condvar.0.unlock().unwrap();
+        drop(lock);
         if task.is_some() {
             task.unwrap().run();
         }
 
-        self.condvar.0.lock().unwrap();
-        self.condvar.0.unlock().unwrap();
+        let lock = self.condvar.0.lock().unwrap();
+        drop(lock)
     }
 }
