@@ -53,6 +53,7 @@ impl JsContext {
         // Full context includes standard library features (JSON, etc.)
         let context = Arc::new(RwLock::new(Context::full(&runtime).expect("Failed to create JS context")));
         let discarded_pointer = Arc::new(RwLock::new(false));
+        let discarded_pointer_clone = discarded_pointer.clone();
         let tab_clone = tab.clone();
         let nodes: Arc<RwLock<Vec<Arc<RwLock<HtmlNode>>>>> = Arc::new(RwLock::new(Vec::new()));
         let nodes_clone = nodes.clone();
@@ -197,7 +198,7 @@ impl JsContext {
             }
         });
 
-        Self { context, nodes, discarded: discarded_pointer }
+        Self { context, nodes, discarded: discarded_pointer_clone }
     }
 
 
