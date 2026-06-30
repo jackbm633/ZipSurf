@@ -90,3 +90,9 @@ function XMLHttpRequest() {
     this.handle = Object.keys(XHR_REQUESTS).length;
     XHR_REQUESTS[this.handle] = this;
 }
+
+XMLHttpRequest.prototype.open = function(method, url, is_async) {
+    this.is_async = is_async;
+    this.method = method;
+    this.url = url;
+}
