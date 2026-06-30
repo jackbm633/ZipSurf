@@ -78,7 +78,7 @@ function __runSetTimeout(handle) {
     callback();
 }
 
-XHR_REQUESTS = {}
+globalThis.XHR_REQUESTS = {}
 
 function XMLHttpRequest() {
     this.handle = Object.keys(XHR_REQUESTS).length;
