@@ -90,3 +90,8 @@ XMLHttpRequest.prototype.open = function(method, url, is_async) {
     this.method = method;
     this.url = url;
 }
+
+XMLHttpRequest.prototype.send = function(body) {
+    this.responseText = rustXmlHttpRequestSend(
+        this.method, this.url, body, this.is_async, this.handle);
+}
