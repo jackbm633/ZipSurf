@@ -141,7 +141,7 @@ impl JsContext {
                     }
                 };
             let xml_tab = tab.clone();
-            let xml_http_request_send = move |ctx: rquickjs::Ctx, _method: String, mut url: String, body: String| -> rquickjs::Result<String> {
+            let xml_http_request_send = move |ctx: rquickjs::Ctx, _method: String, mut url: String, body: String, is_async: bool, handle: usize| -> rquickjs::Result<String> {
                 let full_url = xml_tab.clone().read().unwrap().url.clone().unwrap().resolve(url.as_mut_str());
                 if Tab::allowed_request(xml_tab.clone(), full_url.clone().unwrap()) == false {
                     return Err(ctx.throw(rquickjs::Value::from_string(rquickjs::String::from_str(ctx.clone(), "CORS request blocked").unwrap())));
