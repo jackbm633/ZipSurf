@@ -83,3 +83,10 @@ function __runSetTimeout(handle) {
     var callback = SET_TIMEOUT_REQUESTS[handle]
     callback();
 }
+
+XHR_REQUESTS = {}
+
+function XMLHttpRequest() {
+    this.handle = Object.keys(XHR_REQUESTS).length;
+    XHR_REQUESTS[this.handle] = this;
+}
