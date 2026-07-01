@@ -16,7 +16,7 @@ lazy_static! {
     static ref RUNTIME_JS: String = include_str!("../assets/runtime.js").to_string();
 }
 pub struct JsContext {
-    context: Arc<RwLock<Context>>,
+    pub(crate) context: Arc<RwLock<Context>>,
     nodes: Arc<RwLock<Vec<Arc<RwLock<HtmlNode>>>>>,
     pub(crate) discarded: Arc<RwLock<bool>>
 }
@@ -142,30 +142,67 @@ impl JsContext {
                 };
             let xml_tab = tab.clone();
             let xml_http_request_send = move |ctx: rquickjs::Ctx, _method: String, mut url: String, body: String, is_async: bool, handle: usize| -> rquickjs::Result<String> {
-                let full_url = xml_tab.clone().read().unwrap().url.clone().unwrap().resolve(url.as_mut_str());
+                let full_url = xml_tab.read().unwrap().url.clone().unwrap().resolve(url.as_mut_str());
                 if Tab::allowed_request(xml_tab.clone(), full_url.clone().unwrap()) == false {
                     return Err(ctx.throw(rquickjs::Value::from_string(rquickjs::String::from_str(ctx.clone(), "CORS request blocked").unwrap())));
                 }
-                if full_url.clone().unwrap().origin() != xml_tab.clone().read().unwrap().url.clone().unwrap().origin() {
-                    return Err(ctx.throw(rquickjs::Value::from_string(rquickjs::String::from_str(ctx.clone(), "CORS request blocked").unwrap())));
+                let url_resolved = full_url.unwrap();
+                let cookie_jar = xml_tab.read().unwrap().cookie_jar.clone();
+                // Define standard logic to make request and create the task
+                // (Without capturing context or tab!)
+                let build_xhr_task = move |content: String| -> Task {
+                    Task::new(move |tab: &Tab| {
+                        // Safe: We are on the main thread here, and access the non-Send context locally
+                        if let Some(ref js) = tab.js {
+                            if *js.discarded.read().unwrap() { return; }
+                            js.context.read().unwrap().with(|ctx| {
+                                let js_dispatch = format!("__runXHROnload({}, {})", content, handle);
+                                let _ = ctx.eval::<(), _>(js_dispatch.as_str());
+                            });
+                        }
+                    })
+                };
+                if !is_async {
+                    // Synchronous case: run immediately on main thread
+                    if let Ok(response) = url_resolved.request(Some(body), cookie_jar) {
+                        let mut task = build_xhr_task(response.content.clone());
+                        task.run(&xml_tab.read().unwrap());
+                        Ok(response.content)
+                    } else {
+                        Ok("".to_string())
+                    }
+                } else {
+                    // Asynchronous case: get the thread-safe sender
+                    let task_tx = xml_tab.read().unwrap().task_tx.clone().unwrap();
+                    std::thread::spawn(move || {
+                        if let Ok(response) = url_resolved.request(Some(body), cookie_jar) {
+                            // Construct the task (capturing only the Send content string)
+                            let task = build_xhr_task(response.content);
+                            // Send it to the main thread's runner
+                            let _ = task_tx.send(task);
+                        }
+                    });
+                    Ok("".to_string())
                 }
-                let request = full_url.unwrap().request(Option::from(body), xml_tab.clone().read().unwrap().cookie_jar.clone());
-                Ok(request.unwrap().content)
             };
+            
+
+
             let timeout_arc = tab.clone();
             let context_for_timeout = context.clone();
             let set_timeout = move |_ctx: rquickjs::Ctx, code: String, timeout: u64| -> rquickjs::Result<()> {
                 let context_for_task = context_for_timeout.clone();
                 let pd = discarded_pointer.clone();
-                let task = Task::new(move || {
-                    sleep(Duration::from_millis(timeout));
+                let task = Task::new(move |tab| {
+                                            if let Some(ref js) = tab.js {
+                                                sleep(Duration::from_millis(timeout));
                     if pd.read().unwrap().clone() == true {
                         return;
                     }
-                    let res: Result<(), _> = context_for_task.read().unwrap().with(|ctx| ctx.eval(code.as_str()));
+                    let res: Result<(), _> = js.context.read().unwrap().with(|ctx| ctx.eval(code.as_str()));
                     if let Err(e) = res {
                         if let rquickjs::Error::Exception = e {
-                            context_for_task.read().unwrap().with(|ctx| {
+                            js.context.read().unwrap().with(|ctx| {
                                 let exception = ctx.catch();
                                 println!("JS Exception in setTimeout callback: {:?}", exception);
                             });
@@ -173,6 +210,9 @@ impl JsContext {
                             println!("Failed to run setTimeout callback: {e}");
                         }
                     }
+                                            }
+
+                    
                 });
                 timeout_arc.write().unwrap().task_runner.as_mut().unwrap().schedule_task(task);
                 Ok(())

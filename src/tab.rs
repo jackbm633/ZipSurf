@@ -41,7 +41,7 @@ use crate::layout::{LayoutNode, VSTEP};
 use crate::node::{HtmlNode, HtmlNodeType};
 use crate::selector::Selector;
 use crate::task::Task;
-use crate::task_runner::TaskRunner;
+use crate::task_runner::{self, TaskRunner};
 use crate::url::Url;
 use eframe::egui;
 use egui::{Color32, Context, Galley, Pos2, Rect, Vec2};
@@ -192,7 +192,9 @@ pub struct Tab {
     pub(crate) js: Option<Arc<JsContext>>,
     pub(crate) cookie_jar: Arc<RwLock<HashMap<String, (String, HashMap<String, String>)>>>,
     allowed_origins: Option<Vec<String>>,
-    pub(crate) task_runner: Option<TaskRunner>
+    pub(crate) task_runner: Option<TaskRunner>,
+    pub(crate) task_tx: Option<std::sync::mpsc::Sender<Task>>,
+    pub(crate) task_rx: Option<std::sync::mpsc::Receiver<Task>>,
 }
 
 const SCROLL_STEP: f32 = 100.0;
@@ -217,7 +219,9 @@ impl Default for Tab {
             js: None,
             cookie_jar: Arc::new(RwLock::new(HashMap::new())),
             allowed_origins: None,
-            task_runner: None
+            task_runner: None,
+            task_tx: None,
+            task_rx: None
         }
     }
 }
@@ -232,10 +236,13 @@ impl Tab {
     /// * `cc` - Integration context providing access to the egui render state.
     pub fn new(cc: &Context, height: f32, cookie_jar: Arc<RwLock<HashMap<String, (String, HashMap<String, String>)>>>) -> Arc<RwLock<Self>> {
         cc.set_visuals(egui::Visuals::light());
+        let (tx, rx) = std::sync::mpsc::channel();
 
         let tab = Self {
             tab_height: height,
             cookie_jar: cookie_jar.clone(),
+            task_tx: Some(tx),
+            task_rx: Some(rx),
             ..Default::default()
         };
 
@@ -475,11 +482,17 @@ impl Tab {
                                 Ok(bd) => {
                                     let task = Task::new({
                                         let script_content = bd.content.clone();
-                                        let js_ctx = this.read().unwrap().js.clone().unwrap();
-                                        move || {
-                                            js_ctx.run(&*script_content, &*bd.content);
+
+                                        move |tab| {
+                                            if let Some(js) = &tab.js
+                                            {
+                                                js.context.read().unwrap().with(|ctx| {
+                                                    let _ = ctx.eval::<(), _>(script_content.as_str());
+                                                });
+                                            }
                                         }
                                     });
+                                    print!("Scheduling script task");
                                     this.write().unwrap().task_runner.as_mut().unwrap().schedule_task(task);
                                 }
                                 Err(_) => {}
@@ -495,7 +508,6 @@ impl Tab {
                             let body = st.request(None, this.read().unwrap().cookie_jar.clone());
                             match body {
                                 Ok(bd) => {
-                                    println!("{}", bd.content);
                                     this.write().unwrap().rules.append(
                                         &mut CssParser::new(&*bd.content).parse().unwrap_or(vec![]),
                                     );

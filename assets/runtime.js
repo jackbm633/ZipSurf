@@ -95,3 +95,11 @@ XMLHttpRequest.prototype.send = function(body) {
     this.responseText = rustXmlHttpRequestSend(
         this.method, this.url, body, this.is_async, this.handle);
 }
+
+function __runXHROnload(body, handle) {
+    var obj = XHR_REQUESTS[handle];
+    var evt = new Event('load');
+    obj.responseText = body;
+    if (obj.onload)
+        obj.onload(evt);
+}
