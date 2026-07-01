@@ -788,6 +788,30 @@ impl Tab {
     pub(crate) fn allowed_request(this: Arc<RwLock<Tab>>, url: Url) -> bool {
         this.read().unwrap().allowed_origins.is_none() || this.read().unwrap().allowed_origins.as_ref().unwrap().contains(&url.origin())
     }
+
+    pub fn run_tasks(&mut self) {
+        let mut bg_tasks = Vec::new();
+        if let Some(ref rx) = self.task_rx {
+            while let Ok(task) = rx.try_recv() {
+                bg_tasks.push(task);
+            }
+        }
+        for mut task in bg_tasks {
+            task.run(self);
+        }
+
+        let mut task: Option<Task> = None;
+        if let Some(ref mut runner) = self.task_runner {
+            let lock = runner.condvar.0.lock().unwrap();
+            if runner.tasks.len() > 0 {
+                task = Some(runner.tasks.pop().unwrap());
+            }
+            drop(lock);
+        }
+        if let Some(mut t) = task {
+            t.run(self);
+        }
+    }
 }
 
 /// A structure that represents text rendering properties, including its content,

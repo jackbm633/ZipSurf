@@ -1,4 +1,4 @@
-﻿use crate::chrome::{Chrome, ChromeAction};
+use crate::chrome::{Chrome, ChromeAction};
 use crate::layout::HEIGHT;
 use crate::tab::{DrawCommand, Tab};
 use crate::url::Url;
@@ -209,7 +209,7 @@ impl eframe::App for Browser {
         }
         self.chrome.borrow_mut().draw(ui.ctx(), &*self.tabs, &self.current_tab);
 
-        self.current_tab.write().unwrap().task_runner.as_mut().unwrap().run();
+        self.current_tab.write().unwrap().run_tasks();
 
         if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
             self.current_tab.write().unwrap().scroll_down();

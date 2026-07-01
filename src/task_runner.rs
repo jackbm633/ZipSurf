@@ -31,34 +31,6 @@ impl TaskRunner {
     /// If there are no tasks, this method does nothing.
 
     pub fn run(&mut self) {
-        // 1. Drain any tasks sent from background threads
-        let mut bg_tasks = Vec::new();
-        {
-            let tab_borrow = self.tab.read().unwrap();
-            if let Some(ref rx) = tab_borrow.task_rx {
-                while let Ok(task) = rx.try_recv() {
-                    bg_tasks.push(task);
-                }
-            }
-        } // tab_borrow is dropped here
-
-        // 2. Execute the background tasks on the main thread
-        for mut task in bg_tasks {
-            let tab_ref = self.tab.read().unwrap();
-            task.run(&tab_ref);
-        }
-
-        // 3. Execute normal queue tasks
-        let mut task: Option<Task> = None;
-        let lock = self.condvar.0.lock().unwrap();
-        if self.tasks.len() > 0 {
-            task = Some(self.tasks.pop().unwrap());
-        }
-        drop(lock);
-
-        if let Some(mut t) = task {
-            let tab_ref = self.tab.read().unwrap();
-            t.run(&tab_ref);
-        }
+        // Obsolete: Use Tab::run_tasks() instead to avoid RwLock deadlocks.
     }
 }
