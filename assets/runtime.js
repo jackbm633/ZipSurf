@@ -1,4 +1,4 @@
-﻿// Ensure console exists globally
+// Ensure console exists globally
 globalThis.console = {
     log: (...args) => {
         // Join arguments with a space, similar to standard console behavior
@@ -110,3 +110,20 @@ function requestAnimationFrame(fn) {
     RAF_LISTENERS.push(fn);
     rustRequestAnimationFrame();
 }
+
+function __runRAFHandlers() {
+    var handlers_copy = RAF_LISTENERS;
+    globalThis.RAF_LISTENERS = [];
+    for (var i = 0; i < handlers_copy.length; i++) {
+        handlers_copy[i]();
+    }
+}
+
+globalThis.Node = Node;
+globalThis.Event = Event;
+globalThis.setTimeout = setTimeout;
+globalThis.__runSetTimeout = __runSetTimeout;
+globalThis.XMLHttpRequest = XMLHttpRequest;
+globalThis.__runXHROnload = __runXHROnload;
+globalThis.requestAnimationFrame = requestAnimationFrame;
+globalThis.__runRAFHandlers = __runRAFHandlers;

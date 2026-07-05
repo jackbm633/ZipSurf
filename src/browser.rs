@@ -209,7 +209,11 @@ impl eframe::App for Browser {
         }
         self.chrome.borrow_mut().draw(ui.ctx(), &*self.tabs, &self.current_tab);
 
-        self.current_tab.write().unwrap().run_tasks();
+        Tab::run_tasks(self.current_tab.clone());
+
+        if self.current_tab.read().unwrap().needs_redraw {
+            ui.ctx().request_repaint();
+        }
 
         if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
             self.current_tab.write().unwrap().scroll_down();

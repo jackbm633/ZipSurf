@@ -188,14 +188,14 @@ pub struct Tab {
     history: Vec<Url>,
     rules: Vec<(Selector, HashMap<String, String>)>,
     focus: Option<Arc<RwLock<HtmlNode>>>,
-    needs_redraw: bool,
+    pub(crate) needs_redraw: bool,
     pub(crate) js: Option<Arc<JsContext>>,
     pub(crate) cookie_jar: Arc<RwLock<HashMap<String, (String, HashMap<String, String>)>>>,
     allowed_origins: Option<Vec<String>>,
     pub(crate) task_runner: Option<TaskRunner>,
     pub(crate) task_tx: Option<std::sync::mpsc::Sender<Task>>,
     pub(crate) task_rx: Option<std::sync::mpsc::Receiver<Task>>,
-    pub(crate) context: Option<egui::Context>
+    pub(crate) ctx: Option<Context>,
 }
 
 const SCROLL_STEP: f32 = 100.0;
@@ -223,7 +223,7 @@ impl Default for Tab {
             task_runner: None,
             task_tx: None,
             task_rx: None,
-            context: None
+            ctx: None,
         }
     }
 }
@@ -245,7 +245,7 @@ impl Tab {
             cookie_jar: cookie_jar.clone(),
             task_tx: Some(tx),
             task_rx: Some(rx),
-            context: Some(cc.clone()),
+            ctx: Some(cc.clone()),
             ..Default::default()
         };
 
@@ -254,7 +254,8 @@ impl Tab {
         tab_rc.write().unwrap().task_runner = Some(TaskRunner {
             tab: tab_rc.clone(),
             tasks: vec![],
-            condvar: Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new()))
+            condvar: Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new())),
+            ctx: Some(cc.clone()),
         });
 
         tab_rc
@@ -486,13 +487,18 @@ impl Tab {
                                     let task = Task::new({
                                         let script_content = bd.content.clone();
 
-                                        move |tab| {
-                                            if let Some(js) = &tab.js
-                                            {
-                                                js.context.read().unwrap().with(|ctx| {
-                                                    let _ = ctx.eval::<(), _>(script_content.as_str());
-                                                });
-                                            }
+                                        move |js: Arc<JsContext>| {
+                                            js.context.read().unwrap().with(|ctx| {
+                                                let res = ctx.eval::<(), _>(script_content.as_str());
+                                                if let Err(e) = res {
+                                                    if let rquickjs::Error::Exception = e {
+                                                        let exception = ctx.catch();
+                                                        println!("JS Exception in script eval: {:?}", exception);
+                                                    } else {
+                                                        println!("Failed to eval script: {e}");
+                                                    }
+                                                }
+                                            });
                                         }
                                     });
                                     print!("Scheduling script task");
@@ -792,29 +798,47 @@ impl Tab {
         this.read().unwrap().allowed_origins.is_none() || this.read().unwrap().allowed_origins.as_ref().unwrap().contains(&url.origin())
     }
 
-    pub fn run_tasks(&mut self) {
-        let mut bg_tasks = Vec::new();
-        if let Some(ref rx) = self.task_rx {
-            while let Ok(task) = rx.try_recv() {
-                bg_tasks.push(task);
+    pub fn run_tasks(this: Arc<RwLock<Tab>>) {
+        let (js, bg_tasks, runner_task, repaint_ctx) = {
+            let mut tab = this.write().unwrap();
+            let js = match &tab.js {
+                Some(js) => js.clone(),
+                None => return,
+            };
+
+            let mut bg_tasks = Vec::new();
+            if let Some(ref rx) = tab.task_rx {
+                while let Ok(task) = rx.try_recv() {
+                    bg_tasks.push(task);
+                }
             }
-        }
+
+            let mut runner_task = None;
+            if let Some(ref mut runner) = tab.task_runner {
+                let lock = runner.condvar.0.lock().unwrap();
+                if runner.tasks.len() > 0 {
+                    runner_task = Some(runner.tasks.pop().unwrap());
+                }
+                drop(lock);
+            }
+
+            let repaint_ctx = tab.ctx.clone();
+
+            (js, bg_tasks, runner_task, repaint_ctx)
+        };
+
         for mut task in bg_tasks {
-            task.run(self);
-            self.context.as_ref().unwrap().request_repaint();
+            task.run(js.clone());
+            if let Some(ref ctx) = repaint_ctx {
+                ctx.request_repaint();
+            }
         }
 
-        let mut task: Option<Task> = None;
-        if let Some(ref mut runner) = self.task_runner {
-            let lock = runner.condvar.0.lock().unwrap();
-            if runner.tasks.len() > 0 {
-                task = Some(runner.tasks.pop().unwrap());
+        if let Some(mut t) = runner_task {
+            t.run(js);
+            if let Some(ref ctx) = repaint_ctx {
+                ctx.request_repaint();
             }
-            drop(lock);
-        }
-        if let Some(mut t) = task {
-            t.run(self);
-            self.context.as_ref().unwrap().request_repaint();
         }
     }
 }

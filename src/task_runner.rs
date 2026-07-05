@@ -8,7 +8,8 @@ use crate::{tab::Tab, task::Task};
 pub struct TaskRunner {
     pub tab: Arc<RwLock<Tab>>,
     pub tasks: Vec<Task>,
-    pub condvar: Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>
+    pub condvar: Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>,
+    pub ctx: Option<egui::Context>,
 }
 
 impl TaskRunner {
@@ -24,6 +25,11 @@ impl TaskRunner {
         self.condvar.1.notify_all();
         // Release the lock after modifying the task queue.
         drop(lock);
+
+        // Wake up Egui loop directly without acquiring a lock on Tab
+        if let Some(ref ctx) = self.ctx {
+            ctx.request_repaint();
+        }
     }
 
     /// Runs the next scheduled task in the queue.
