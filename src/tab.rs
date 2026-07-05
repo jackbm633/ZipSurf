@@ -195,6 +195,7 @@ pub struct Tab {
     pub(crate) task_runner: Option<TaskRunner>,
     pub(crate) task_tx: Option<std::sync::mpsc::Sender<Task>>,
     pub(crate) task_rx: Option<std::sync::mpsc::Receiver<Task>>,
+    pub(crate) context: Option<egui::Context>
 }
 
 const SCROLL_STEP: f32 = 100.0;
@@ -221,7 +222,8 @@ impl Default for Tab {
             allowed_origins: None,
             task_runner: None,
             task_tx: None,
-            task_rx: None
+            task_rx: None,
+            context: None
         }
     }
 }
@@ -243,6 +245,7 @@ impl Tab {
             cookie_jar: cookie_jar.clone(),
             task_tx: Some(tx),
             task_rx: Some(rx),
+            context: Some(cc.clone()),
             ..Default::default()
         };
 
@@ -798,6 +801,7 @@ impl Tab {
         }
         for mut task in bg_tasks {
             task.run(self);
+            self.context.as_ref().unwrap().request_repaint();
         }
 
         let mut task: Option<Task> = None;
@@ -810,6 +814,7 @@ impl Tab {
         }
         if let Some(mut t) = task {
             t.run(self);
+            self.context.as_ref().unwrap().request_repaint();
         }
     }
 }

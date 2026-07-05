@@ -217,25 +217,26 @@ impl JsContext {
                 timeout_arc.write().unwrap().task_runner.as_mut().unwrap().schedule_task(task);
                 Ok(())
             };
+
+            let raf_tab = tab.clone();
+            let rust_request_animation_frame = move || {
+                let task = Task::new(move |tab| {
+                    if let Some(ref js) = tab.js {
+                        js.context.read().unwrap().with(|ctx| {
+                            // Execute the registered Javascript RAF handlers
+                            let _ = ctx.eval::<(), _>("__runRAFHandlers()");
+                        });
+                    }
+                });
+                raf_tab.write().unwrap().task_runner.as_mut().unwrap().schedule_task(task);
+            };
             ctx.globals().set("rustGetAttribute", Function::new(ctx.clone(), get_attribute).unwrap()).unwrap();
             ctx.globals().set("rustLog", Function::new(ctx.clone(), log).unwrap()).unwrap();
             ctx.globals().set("rustInnerHtmlSet", Function::new(ctx.clone(), inner_html_set).unwrap()).unwrap();
             ctx.globals().set("rustQuerySelectorAll", Function::new(ctx.clone(), query_selector_all).unwrap()).unwrap();
             ctx.globals().set("rustXmlHttpRequestSend", Function::new(ctx.clone(), xml_http_request_send).unwrap()).unwrap();
             ctx.globals().set("rustSetTimeout", Function::new(ctx.clone(), set_timeout).unwrap()).unwrap();
-
-            let res: Result<(), _>= ctx.eval(RUNTIME_JS.as_str());
-            match res {
-                Ok(_) => {}
-                Err(e) => {
-                    if let rquickjs::Error::Exception = e {
-                        let exception = ctx.catch();
-                        println!("JS Exception in dispatch_event: {:?}", exception);
-                    } else {
-                        println!("Failed to dispatch event: {e}");
-                    }
-                }
-            }
+            ctx.globals().set("rustRequestAnimationFrame", Function::new(ctx.clone(), rust_request_animation_frame).unwrap()).unwrap();
         });
 
         Self { context, nodes, discarded: discarded_pointer_clone }

@@ -23,7 +23,7 @@ impl TaskRunner {
         // Notify any waiting threads that a new task has been scheduled.
         self.condvar.1.notify_all();
         // Release the lock after modifying the task queue.
-        drop(lock)    
+        drop(lock);
     }
 
     /// Runs the next scheduled task in the queue.
