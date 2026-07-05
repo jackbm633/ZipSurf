@@ -103,3 +103,10 @@ function __runXHROnload(body, handle) {
     if (obj.onload)
         obj.onload(evt);
 }
+
+globalThis.RAF_LISTENERS = [];
+
+function requestAnimationFrame(fn) {
+    RAF_LISTENERS.push(fn);
+    rustRequestAnimationFrame();
+}
