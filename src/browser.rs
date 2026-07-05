@@ -245,6 +245,7 @@ impl eframe::App for Browser {
             }  else {
                 self.focus = Some("content".parse().unwrap());
                 self.chrome.borrow_mut().blur();
+                self.current_tab.write().unwrap().update_layout(ui.ctx());
                 Tab::click(self.current_tab.clone(), pos - Vec2::new(0.0, self.chrome.borrow().bottom()));
             }
         }
