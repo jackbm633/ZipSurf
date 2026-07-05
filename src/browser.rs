@@ -1,5 +1,6 @@
 use crate::chrome::{Chrome, ChromeAction};
 use crate::layout::HEIGHT;
+use crate::measure_time::MeasureTime;
 use crate::tab::{DrawCommand, Tab};
 use crate::url::Url;
 use eframe::emath::Pos2;
@@ -55,6 +56,7 @@ pub struct Browser {
     chrome: Rc<RefCell<Chrome>>,
     focus: Option<String>,
     cookie_jar: Arc<RwLock<HashMap<String, (String, HashMap<String, String>)>>>,
+    measure: MeasureTime,
 }
 
 impl Browser {
@@ -68,6 +70,7 @@ impl Browser {
             chrome: Rc::new(RefCell::new(Chrome::new())),
                 focus: None,
                 cookie_jar: cookie_jar.clone(),
+                measure: MeasureTime::new(),
             }));
 
         // 2. Now update Chrome with a real weak pointer to the browser

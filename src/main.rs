@@ -19,6 +19,7 @@ mod rect;
 mod js_context;
 mod task;
 mod task_runner;
+mod measure_time;
 
 fn main() -> eframe::Result<(), eframe::Error> {
 
