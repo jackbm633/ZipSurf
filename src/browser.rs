@@ -1,11 +1,11 @@
 use crate::chrome::{Chrome, ChromeAction};
 use crate::layout::HEIGHT;
 use crate::measure_time::MeasureTime;
-use crate::tab::{DrawCommand, Tab};
+use crate::tab::{self, DrawCommand, Tab};
 use crate::url::Url;
 use eframe::emath::Pos2;
 use eframe::epaint::{Color32, Stroke, StrokeKind};
-use egui::{Context, Painter, Ui, Vec2};
+use egui::{Context, Painter, Ui, Vec2, lerp};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -52,43 +52,48 @@ use eframe::Frame;
 /// ```
 pub struct Browser {
     pub(crate) tabs: Vec<Arc<RwLock<Tab>>>,
-    current_tab: Arc<RwLock<Tab>>,
+    current_tab: Option<Arc<RwLock<Tab>>>,
     chrome: Rc<RefCell<Chrome>>,
     focus: Option<String>,
-    cookie_jar: Arc<RwLock<HashMap<String, (String, HashMap<String, String>)>>>,
-    measure: MeasureTime,
+    pub(crate) cookie_jar: Arc<RwLock<HashMap<String, (String, HashMap<String, String>)>>>,
+    pub(crate) measure: Arc<std::sync::Mutex<MeasureTime>>,
 }
 
 impl Browser {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Rc<RefCell<Self>> {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Arc<RwLock<Self>> {
         cc.egui_ctx.set_visuals(egui::Visuals::light());
         Self::setup_custom_fonts(&cc.egui_ctx);
         let cookie_jar = Arc::new(RwLock::new(HashMap::new()));
-        let tab = Tab::new(&cc.egui_ctx, 0.0, cookie_jar.clone());
-        let browser = Rc::new(RefCell::new(
-            Browser { tabs: vec![tab.clone()], current_tab: tab.clone(),
+        //let tab = Tab::new(&cc.egui_ctx, 0.0, cookie_jar.clone(), None);
+        let browser_obj = Browser { tabs: vec![], current_tab: None,
             chrome: Rc::new(RefCell::new(Chrome::new())),
                 focus: None,
                 cookie_jar: cookie_jar.clone(),
-                measure: MeasureTime::new(),
-            }));
+                measure: Arc::new(std::sync::Mutex::new(MeasureTime::new())),
+            };
+        let browser = Arc::new(RwLock::new(browser_obj));
 
         // 2. Now update Chrome with a real weak pointer to the browser
         let chrome = Rc::new(RefCell::new(Chrome::new()));
 
 
-        browser.borrow_mut().chrome = chrome.clone();
-        browser
+        browser.write().unwrap().chrome = chrome.clone();
+        Browser::new_tab(browser.clone(), &cc.egui_ctx,   Url::new("https://browser.engineering").unwrap());
+        browser.clone()
+    } 
 
-
+    pub fn new_tab(this: Arc<RwLock<Self>>, cc: &Context, url: Url)
+    {
+        let mut browser = this.write().unwrap();
+        browser.new_tab_internal(cc, url);
     }
 
-    pub fn new_tab(&mut self, cc: &Context, url: Url)
+    pub fn new_tab_internal(&mut self, cc: &Context, url: Url)
     {
-        let tab = Tab::new(cc, HEIGHT - self.chrome.borrow().bottom(), self.cookie_jar.clone());
+        let tab = Tab::new(cc, HEIGHT - self.chrome.borrow().bottom(), self.cookie_jar.clone(), Some(self.measure.clone()));
         Tab::load(tab.clone(), url, None);
         self.tabs.push(tab.clone());
-        self.current_tab = tab.clone();
+        self.current_tab = Some(tab.clone());
     }
 
     pub fn load_first_tab(&mut self, url: Url) {
@@ -207,25 +212,29 @@ impl eframe::App for Browser {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
         self.chrome.borrow_mut().init(ui.ctx());
         {
-            let mut tab = self.current_tab.write().unwrap();
-            tab.update_layout(ui.ctx());
+            if let Some(tab) = &self.current_tab {
+                let mut tab = tab.write().unwrap();
+                tab.update_layout(ui.ctx());
+            }
+            
         }
-        self.chrome.borrow_mut().draw(ui.ctx(), &*self.tabs, &self.current_tab);
+        self.chrome.borrow_mut().draw(ui.ctx(), &*self.tabs, self.current_tab.as_ref());
 
-        Tab::run_tasks(self.current_tab.clone());
+        if let Some(tab) = &self.current_tab {{
+            Tab::run_tasks(tab.clone());
+            
+            if tab.read().unwrap().needs_redraw {
+                ui.ctx().request_repaint();
+            }
 
-        if self.current_tab.read().unwrap().needs_redraw {
-            ui.ctx().request_repaint();
+            if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+                tab.write().unwrap().scroll_down();
+            }
+
+            if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                self.chrome.borrow_mut().on_enter(tab.clone());
+            }
         }
-
-        if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
-            self.current_tab.write().unwrap().scroll_down();
-        }
-
-        if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-            self.chrome.borrow_mut().on_enter(self.current_tab.clone());
-        }
-
 
         if ui.input(|i| i.pointer.primary_clicked()) {
             let pos = ui.input(|i| i.pointer.interact_pos()).unwrap();
@@ -239,30 +248,41 @@ impl eframe::App for Browser {
                 if let Some(action) = action {
                     match action {
                         ChromeAction::NewTab => {
-                            self.new_tab(ui, Url::new("https://browser.engineering").unwrap());
+                            let ctx = ui.ctx().clone();
+                            self.new_tab_internal(&ctx, Url::new("https://browser.engineering").unwrap());
                         }
                         ChromeAction::SelectTab(index) => {
-                            self.current_tab = self.tabs[index].clone();
+                            self.current_tab = Some(self.tabs[index].clone());
                         }
                         ChromeAction::GoBack => {
-                            Tab::go_back(self.current_tab.clone());
+                            if let Some(tab) = &self.current_tab {
+                                Tab::go_back(tab.clone());
+                            }
+                           
                         }
                     }
                 }
             }  else {
                 self.focus = Some("content".parse().unwrap());
                 self.chrome.borrow_mut().blur();
-                self.current_tab.write().unwrap().update_layout(ui.ctx());
-                Tab::click(self.current_tab.clone(), pos - Vec2::new(0.0, self.chrome.borrow().bottom()));
+                if let Some(tab) = &self.current_tab {
+                    tab.write().unwrap().update_layout(ui.ctx());
+                    Tab::click(tab.clone(), pos - Vec2::new(0.0, self.chrome.borrow().bottom()));
+                }
             }
         }
 
+        let chrome = self.chrome.clone();
+        let current_tab = self.current_tab.clone();
+        let focus = self.focus.clone();
         ui.input(|i| {
             for event in &i.events {
                 if let egui::Event::Text(text) = event {
-                    self.chrome.borrow_mut().keypress(text);
-                    if self.focus == Some("content".parse().unwrap()) {
-                        Tab::keypress(self.current_tab.clone(), text);
+                    chrome.borrow_mut().keypress(text);
+                    if focus == Some("content".parse().unwrap()) {
+                        if let Some(tab) = &current_tab {
+                            Tab::keypress(tab.clone(), text);
+                        }
                     }
 
                 }
@@ -273,17 +293,16 @@ impl eframe::App for Browser {
             .frame(egui::Frame::new().fill(Color32::WHITE))
             .show_inside(ui, |ui| {
                 let painter = ui.painter();
-                let tab = self.current_tab.read().unwrap();
-                let scroll_y = tab.scroll_y;
-                let chrome = self.chrome.borrow();
-
-
-
-                for cmd in &*tab.draw_commands {
-                    if (cmd.top() < scroll_y + HEIGHT) || (cmd.bottom() > scroll_y) {
-                        Self::draw_on_screen(painter, scroll_y - self.chrome.borrow().bottom(), &cmd);
+                if let Some(tab) = &self.current_tab {
+                    let tab_read = tab.read().unwrap();
+                    let scroll_y = tab_read.scroll_y;
+                    for cmd in &*tab_read.draw_commands {
+                        if (cmd.top() < scroll_y + HEIGHT) || (cmd.bottom() > scroll_y) {
+                            Self::draw_on_screen(painter, scroll_y - self.chrome.borrow().bottom(), &cmd);
+                        }
                     }
                 }
+                let chrome = self.chrome.borrow();
 
                 for cmd in &*chrome.draw_commands
                 {
@@ -293,4 +312,5 @@ impl eframe::App for Browser {
     }
 
 
+}
 }

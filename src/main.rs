@@ -1,6 +1,5 @@
-use std::cell::RefCell;
 use std::env::args;
-use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 use eframe::Frame;
 use egui::Ui;
 use crate::{url::Url};
@@ -35,20 +34,17 @@ fn main() -> eframe::Result<(), eframe::Error> {
         window_options,
         Box::new(|cc| {
             let browser = Browser::new(cc);
-            browser.borrow_mut().load_first_tab(Url::new(&url).unwrap());
+            browser.write().unwrap().load_first_tab(Url::new(&url).unwrap());
             Ok(Box::new(BrowserAppWrapper { browser: browser.clone()}))
         }))
 }
 
 struct BrowserAppWrapper {
-    browser: Rc<RefCell<Browser>>,
+    browser: Arc<RwLock<Browser>>,
 }
 
 impl eframe::App for BrowserAppWrapper {
     fn ui(&mut self, ui: &mut Ui, frame: &mut Frame) {
-        self.browser.borrow_mut().ui(ui, frame);
+        self.browser.write().unwrap().ui(ui, frame);
     }
-
 }
-
-

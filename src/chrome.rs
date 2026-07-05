@@ -101,7 +101,7 @@ impl Chrome {
         tab_rect
     }
 
-    pub fn draw(&mut self, ctx: &egui::Context, tabs: &[Arc<RwLock<Tab>>], current_tab: &Arc<RwLock<Tab>>) {
+    pub fn draw(&mut self, ctx: &egui::Context, tabs: &[Arc<RwLock<Tab>>], current_tab: Option<&Arc<RwLock<Tab>>>) {
         self.draw_commands.clear();
         // Chrome-specific drawing logic would go here,
         // potentially using the passed 'ui' or its painter.
@@ -165,12 +165,13 @@ impl Chrome {
                 )
             );
 
-            if Arc::ptr_eq(tab_rc, current_tab) {
-                self.draw_commands.push(DrawCommand::DrawLine(
-                    DrawLine {
-                        from: Pos2::new(0.0, bounds.bottom()),
-                        to: bounds.left_bottom(),
-                        color: Color32::BLACK,
+            if let Some(current_tab) = current_tab {
+                if Arc::ptr_eq(tab_rc, current_tab) {
+                    self.draw_commands.push(DrawCommand::DrawLine(
+                        DrawLine {
+                            from: Pos2::new(0.0, bounds.bottom()),
+                            to: bounds.left_bottom(),
+                            color: Color32::BLACK,
                         thickness: 1.0
                     }
                 ));
@@ -214,7 +215,10 @@ impl Chrome {
 
         ));
 
-        let url = current_tab.read().unwrap().url.clone().unwrap().to_string();
+        let mut url: String = "".into();
+        if let Some(current_tab) = current_tab {
+            url = current_tab.read().unwrap().url.clone().unwrap().to_string();
+        }
 
         if self.focus == Focus::AddressBar {
             let galley = ctx.fonts_mut(|f| f.layout_no_wrap(self.address_bar.parse().unwrap(),
@@ -248,6 +252,7 @@ impl Chrome {
         }
 
     }
+}
 
     pub fn on_enter(&mut self,  tab: Arc<RwLock<Tab>>)
     {

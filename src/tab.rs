@@ -34,6 +34,7 @@
 //! Browser::style(Some(Rc::new(RefCell::new(html_tree))), &rules);
 //! ```
 //! fn
+use crate::browser::Browser;
 use crate::css_parser::CssParser;
 use crate::html_parser::HtmlParser;
 use crate::js_context::JsContext;
@@ -196,6 +197,7 @@ pub struct Tab {
     pub(crate) task_tx: Option<std::sync::mpsc::Sender<Task>>,
     pub(crate) task_rx: Option<std::sync::mpsc::Receiver<Task>>,
     pub(crate) ctx: Option<Context>,
+    pub(crate) measure: Option<Arc<std::sync::Mutex<crate::measure_time::MeasureTime>>>,
 }
 
 const SCROLL_STEP: f32 = 100.0;
@@ -224,6 +226,7 @@ impl Default for Tab {
             task_tx: None,
             task_rx: None,
             ctx: None,
+            measure: None,
         }
     }
 }
@@ -236,7 +239,7 @@ impl Tab {
     ///
     /// # Arguments
     /// * `cc` - Integration context providing access to the egui render state.
-    pub fn new(cc: &Context, height: f32, cookie_jar: Arc<RwLock<HashMap<String, (String, HashMap<String, String>)>>>) -> Arc<RwLock<Self>> {
+    pub fn new(cc: &Context, height: f32, cookie_jar: Arc<RwLock<HashMap<String, (String, HashMap<String, String>)>>>, measure: Option<Arc<std::sync::Mutex<crate::measure_time::MeasureTime>>>) -> Arc<RwLock<Self>> {
         cc.set_visuals(egui::Visuals::light());
         let (tx, rx) = std::sync::mpsc::channel();
 
@@ -246,6 +249,7 @@ impl Tab {
             task_tx: Some(tx),
             task_rx: Some(rx),
             ctx: Some(cc.clone()),
+            measure,
             ..Default::default()
         };
 
@@ -540,6 +544,9 @@ impl Tab {
     }
 
     pub(crate) fn render(&mut self) {
+        if let Some(ref measure) = self.measure {
+            measure.lock().unwrap().time("render");
+        }
         Self::style(Some(self.nodes.clone().unwrap()), &self.rules);
         self.document = Some(LayoutNode::new_document(self.nodes.clone().unwrap()));
         self.needs_redraw = true;
