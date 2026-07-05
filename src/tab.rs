@@ -550,6 +550,9 @@ impl Tab {
         Self::style(Some(self.nodes.clone().unwrap()), &self.rules);
         self.document = Some(LayoutNode::new_document(self.nodes.clone().unwrap()));
         self.needs_redraw = true;
+        if let Some(ref measure) = self.measure {
+            measure.lock().unwrap().stop("render");
+        }
     }
 
     pub fn go_back(this: Arc<RwLock<Self>>) {
