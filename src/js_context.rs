@@ -1,15 +1,13 @@
 use crate::css_parser::CssParser;
 use crate::html_parser::HtmlParser;
 use crate::node::{HtmlNode, HtmlNodeType};
-use crate::tab::Tab;
+use crate::tab::{Tab, TabMessage};
 use crate::task::Task;
 use lazy_static::lazy_static;
 use rquickjs::Runtime;
 use rquickjs::{Context, Function};
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::{Arc, RwLock};
-use std::thread::sleep;
+use std::thread::{self, sleep};
 use std::time::Duration;
 
 lazy_static! {
@@ -18,10 +16,25 @@ lazy_static! {
 pub struct JsContext {
     pub(crate) context: Arc<RwLock<Context>>,
     nodes: Arc<RwLock<Vec<Arc<RwLock<HtmlNode>>>>>,
-    pub(crate) discarded: Arc<RwLock<bool>>
+    pub(crate) discarded: Arc<RwLock<bool>>,
+    pub(crate) measure: Option<Arc<std::sync::Mutex<crate::measure_time::MeasureTime>>>,
 }
 
 impl JsContext {
+    pub(crate) fn eval_with_measure<R, F>(&self, f: F) -> R
+    where
+        F: FnOnce() -> R,
+    {
+        if let Some(ref m) = self.measure {
+            m.lock().unwrap().time("script", thread::current().id());
+        }
+        let res = f();
+        if let Some(ref m) = self.measure {
+            m.lock().unwrap().stop("script", thread::current().id());
+        }
+        res
+    }
+
     pub(crate) fn dispatch_event(&self, event_type: &str, node: Arc<RwLock<HtmlNode>>) {
         let index = {
             let mut nodes = self.nodes.write().unwrap();
@@ -31,7 +44,7 @@ impl JsContext {
             })
         };
         self.context.read().unwrap().with(|ctx| {
-            let res: Result<(), _>=  ctx.eval(format!("new Node({}).dispatchEvent('{}')", index, event_type).as_str());
+            let res: Result<(), _>=  self.eval_with_measure(|| ctx.eval(format!("new Node({}).dispatchEvent('{}')", index, event_type).as_str()));
             match res {
                 Ok(_) => {}
                 Err(e) => {
@@ -144,7 +157,7 @@ impl JsContext {
                         if *js.discarded.read().unwrap() { return; }
                         js.context.read().unwrap().with(|ctx| {
                             let js_dispatch = format!("__runXHROnload({}, {})", content, handle);
-                            let _ = ctx.eval::<(), _>(js_dispatch.as_str());
+                            let _ = js.eval_with_measure(|| ctx.eval::<(), _>(js_dispatch.as_str()));
                         });
                     })
                 };
@@ -167,7 +180,7 @@ impl JsContext {
                             // Construct the task (capturing only the Send content string)
                             let task = build_xhr_task(response.content);
                             // Send it to the main thread's runner
-                            let _ = task_tx.send(task);
+                            let _ = task_tx.send(TabMessage::RunTask(task));
                             if let Some(ref ctx) = repaint_ctx {
                                 ctx.request_repaint();
                             }
@@ -187,7 +200,7 @@ impl JsContext {
                     if pd.read().unwrap().clone() == true {
                         return;
                     }
-                    let res: Result<(), _> = js.context.read().unwrap().with(|ctx| ctx.eval(code.as_str()));
+                    let res: Result<(), _> = js.context.read().unwrap().with(|ctx| js.eval_with_measure(|| ctx.eval(code.as_str())));
                     if let Err(e) = res {
                         if let rquickjs::Error::Exception = e {
                             js.context.read().unwrap().with(|ctx| {
@@ -204,22 +217,12 @@ impl JsContext {
             };
 
             let raf_tab = tab.clone();
+            let repaint_ctx = tab.read().unwrap().ctx.clone();
             let rust_request_animation_frame = move || {
-                let task = Task::new(move |js: Arc<JsContext>| {
-                    js.context.read().unwrap().with(|ctx| {
-                        // Execute the registered Javascript RAF handlers
-                        let res = ctx.eval::<(), _>("__runRAFHandlers()");
-                        if let Err(e) = res {
-                            if let rquickjs::Error::Exception = e {
-                                let exception = ctx.catch();
-                                println!("JS Exception in __runRAFHandlers: {:?}", exception);
-                            } else {
-                                println!("Failed to run __runRAFHandlers: {e}");
-                            }
-                        }
-                    });
-                });
-                raf_tab.write().unwrap().task_runner.as_mut().unwrap().schedule_task(task);
+                raf_tab.write().unwrap().has_raf_request = true;
+                if let Some(ref ctx) = repaint_ctx {
+                    ctx.request_repaint();
+                }
             };
             ctx.globals().set("rustGetAttribute", Function::new(ctx.clone(), get_attribute).unwrap()).unwrap();
             ctx.globals().set("rustLog", Function::new(ctx.clone(), log).unwrap()).unwrap();
@@ -243,14 +246,15 @@ impl JsContext {
             }
         });
 
-        Self { context, nodes, discarded: discarded_pointer_clone }
+        let measure = tab.read().unwrap().measure.clone();
+        Self { context, nodes, discarded: discarded_pointer_clone, measure }
     }
 
 
     pub fn run(&self, script_name: &str, code: &str)
     {
         self.context.read().unwrap().with(|ctx| {
-            let result: Result<(), _> = ctx.eval(code);
+            let result: Result<(), _> = self.eval_with_measure(|| ctx.eval(code));
             match result {
                 Ok(_) => {}
                 Err(e) => {println!("Script {script_name} failed to run: {e}")}
@@ -258,3 +262,6 @@ impl JsContext {
         });
     }
 }
+
+unsafe impl Send for JsContext {}
+unsafe impl Sync for JsContext {}

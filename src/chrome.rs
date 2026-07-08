@@ -1,10 +1,8 @@
-﻿use crate::layout::WIDTH;
-use crate::tab::{DrawCommand, DrawLine, DrawOutline, DrawRect, DrawText, Tab};
+use crate::layout::WIDTH;
+use crate::tab::{DrawCommand, DrawLine, DrawOutline, DrawRect, DrawText, Tab, TabMessage};
 use crate::url::Url;
 use eframe::epaint::{FontFamily, FontId};
 use egui::{Color32, Context, Pos2, Rect};
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 
 pub struct Chrome {
@@ -258,7 +256,7 @@ impl Chrome {
     {
         if self.focus == Focus::AddressBar
         {
-            Tab::load(tab, Url::new(&*self.address_bar).unwrap(), None);
+            Tab::send_message(tab, TabMessage::Load { url: Url::new(&*self.address_bar).unwrap(), body: None });
             self.focus = Focus::None;
         }
 

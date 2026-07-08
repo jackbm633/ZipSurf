@@ -34,7 +34,6 @@
 //! Browser::style(Some(Rc::new(RefCell::new(html_tree))), &rules);
 //! ```
 //! fn
-use crate::browser::Browser;
 use crate::css_parser::CssParser;
 use crate::html_parser::HtmlParser;
 use crate::js_context::JsContext;
@@ -42,17 +41,16 @@ use crate::layout::{LayoutNode, VSTEP};
 use crate::node::{HtmlNode, HtmlNodeType};
 use crate::selector::Selector;
 use crate::task::Task;
-use crate::task_runner::{self, TaskRunner};
+use crate::task_runner::TaskRunner;
 use crate::url::Url;
 use eframe::egui;
 use egui::{Color32, Context, Galley, Pos2, Rect, Vec2};
 use lazy_static::lazy_static;
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::{Arc, RwLock};
+use std::thread;
 
 lazy_static! {
     static ref DEFAULT_STYLE_SHEET: Vec<(Selector, HashMap<String, String>)> =
@@ -160,6 +158,16 @@ lazy_static! {
 /// let rendering_context = tab.context.clone();
 /// rendering_context.perform_action();
 /// ```
+pub enum TabMessage {
+    Load { url: Url, body: Option<String> },
+    Click { position: Pos2 },
+    KeyPress { text: String },
+    ScrollDown,
+    GoBack,
+    RunTask(Task),
+    AnimationFrame,
+}
+
 pub struct Tab {
     /// A collection of `Token` objects.
     ///
@@ -194,10 +202,10 @@ pub struct Tab {
     pub(crate) cookie_jar: Arc<RwLock<HashMap<String, (String, HashMap<String, String>)>>>,
     allowed_origins: Option<Vec<String>>,
     pub(crate) task_runner: Option<TaskRunner>,
-    pub(crate) task_tx: Option<std::sync::mpsc::Sender<Task>>,
-    pub(crate) task_rx: Option<std::sync::mpsc::Receiver<Task>>,
+    pub(crate) task_tx: Option<std::sync::mpsc::Sender<TabMessage>>,
     pub(crate) ctx: Option<Context>,
     pub(crate) measure: Option<Arc<std::sync::Mutex<crate::measure_time::MeasureTime>>>,
+    pub(crate) has_raf_request: bool,
 }
 
 const SCROLL_STEP: f32 = 100.0;
@@ -224,9 +232,9 @@ impl Default for Tab {
             allowed_origins: None,
             task_runner: None,
             task_tx: None,
-            task_rx: None,
             ctx: None,
             measure: None,
+            has_raf_request: false,
         }
     }
 }
@@ -246,20 +254,65 @@ impl Tab {
         let tab = Self {
             tab_height: height,
             cookie_jar: cookie_jar.clone(),
-            task_tx: Some(tx),
-            task_rx: Some(rx),
+            task_tx: Some(tx.clone()),
             ctx: Some(cc.clone()),
             measure,
+            task_runner: Some(TaskRunner::new(tx)),
             ..Default::default()
         };
 
         let tab_rc = Arc::new(RwLock::new(tab));
 
-        tab_rc.write().unwrap().task_runner = Some(TaskRunner {
-            tab: tab_rc.clone(),
-            tasks: vec![],
-            condvar: Arc::new((std::sync::Mutex::new(false), std::sync::Condvar::new())),
-            ctx: Some(cc.clone()),
+        let tab_clone = tab_rc.clone();
+        let cc_clone = cc.clone();
+        std::thread::spawn(move || {
+            while let Ok(msg) = rx.recv() {
+                match msg {
+                    TabMessage::Load { url, body } => {
+                        Tab::load(tab_clone.clone(), url, body);
+                    }
+                    TabMessage::Click { position } => {
+                        Tab::click(tab_clone.clone(), position);
+                    }
+                    TabMessage::KeyPress { text } => {
+                        Tab::keypress(tab_clone.clone(), &text);
+                    }
+                    TabMessage::ScrollDown => {
+                        tab_clone.write().unwrap().scroll_down();
+                    }
+                    TabMessage::GoBack => {
+                        Tab::go_back(tab_clone.clone());
+                    }
+                    TabMessage::RunTask(mut task) => {
+                        let js = tab_clone.read().unwrap().js.clone();
+                        if let Some(js) = js {
+                            task.run(js);
+                        }
+                    }
+                    TabMessage::AnimationFrame => {
+                        let js = tab_clone.read().unwrap().js.clone();
+                        if let Some(js) = js {
+                            js.context.read().unwrap().with(|ctx| {
+                                let res = js.eval_with_measure(|| ctx.eval::<(), _>("__runRAFHandlers()"));
+                                if let Err(e) = res {
+                                    if let rquickjs::Error::Exception = e {
+                                        let exception = ctx.catch();
+                                        println!("JS Exception in __runRAFHandlers: {:?}", exception);
+                                    } else {
+                                        println!("Failed to run __runRAFHandlers: {e}");
+                                    }
+                                }
+                            });
+                        }
+                    }
+                }
+
+                {
+                    let mut tab = tab_clone.write().unwrap();
+                    tab.update_layout(&cc_clone);
+                }
+                cc_clone.request_repaint();
+            }
         });
 
         tab_rc
@@ -272,10 +325,16 @@ impl Tab {
                     panic!("Browser document not initialized.")
                 }
                 Some(doc) => {
+                    if let Some(ref measure) = self.measure {
+                        measure.lock().unwrap().time("draw" , thread::current().id());
+                    }
                     LayoutNode::layout(doc.clone(), ctx.clone());
                     self.draw_commands = vec![];
                     LayoutNode::paint_tree(doc.clone(), &mut self.draw_commands, Vec2::ZERO);
                     self.needs_redraw = false;
+                    if let Some(ref measure) = self.measure {
+                        measure.lock().unwrap().stop("draw", thread::current().id());
+                    }
                 }
             }
         }
@@ -493,7 +552,7 @@ impl Tab {
 
                                         move |js: Arc<JsContext>| {
                                             js.context.read().unwrap().with(|ctx| {
-                                                let res = ctx.eval::<(), _>(script_content.as_str());
+                                                let res = js.eval_with_measure(|| ctx.eval::<(), _>(script_content.as_str()));
                                                 if let Err(e) = res {
                                                     if let rquickjs::Error::Exception = e {
                                                         let exception = ctx.catch();
@@ -545,13 +604,13 @@ impl Tab {
 
     pub(crate) fn render(&mut self) {
         if let Some(ref measure) = self.measure {
-            measure.lock().unwrap().time("render");
+            measure.lock().unwrap().time("render", thread::current().id());
         }
         Self::style(Some(self.nodes.clone().unwrap()), &self.rules);
         self.document = Some(LayoutNode::new_document(self.nodes.clone().unwrap()));
         self.needs_redraw = true;
         if let Some(ref measure) = self.measure {
-            measure.lock().unwrap().stop("render");
+            measure.lock().unwrap().stop("render", thread::current().id());
         }
     }
 
@@ -808,47 +867,13 @@ impl Tab {
         this.read().unwrap().allowed_origins.is_none() || this.read().unwrap().allowed_origins.as_ref().unwrap().contains(&url.origin())
     }
 
-    pub fn run_tasks(this: Arc<RwLock<Tab>>) {
-        let (js, bg_tasks, runner_task, repaint_ctx) = {
-            let mut tab = this.write().unwrap();
-            let js = match &tab.js {
-                Some(js) => js.clone(),
-                None => return,
-            };
-
-            let mut bg_tasks = Vec::new();
-            if let Some(ref rx) = tab.task_rx {
-                while let Ok(task) = rx.try_recv() {
-                    bg_tasks.push(task);
-                }
-            }
-
-            let mut runner_task = None;
-            if let Some(ref mut runner) = tab.task_runner {
-                let lock = runner.condvar.0.lock().unwrap();
-                if runner.tasks.len() > 0 {
-                    runner_task = Some(runner.tasks.pop().unwrap());
-                }
-                drop(lock);
-            }
-
-            let repaint_ctx = tab.ctx.clone();
-
-            (js, bg_tasks, runner_task, repaint_ctx)
+    pub fn send_message(this: Arc<RwLock<Tab>>, msg: TabMessage) {
+        let tx = {
+            let tab = this.read().unwrap();
+            tab.task_tx.clone()
         };
-
-        for mut task in bg_tasks {
-            task.run(js.clone());
-            if let Some(ref ctx) = repaint_ctx {
-                ctx.request_repaint();
-            }
-        }
-
-        if let Some(mut t) = runner_task {
-            t.run(js);
-            if let Some(ref ctx) = repaint_ctx {
-                ctx.request_repaint();
-            }
+        if let Some(tx) = tx {
+            let _ = tx.send(msg);
         }
     }
 }

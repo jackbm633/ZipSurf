@@ -1,15 +1,16 @@
-use crate::chrome::{Chrome, ChromeAction};
+﻿use crate::chrome::{Chrome, ChromeAction};
 use crate::layout::HEIGHT;
 use crate::measure_time::MeasureTime;
-use crate::tab::{self, DrawCommand, Tab};
+use crate::tab::{self, DrawCommand, Tab, TabMessage};
 use crate::url::Url;
 use eframe::emath::Pos2;
 use eframe::epaint::{Color32, Stroke, StrokeKind};
-use egui::{Context, Painter, Ui, Vec2, lerp};
+use egui::{Context, Painter, Ui, Vec2};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
+use std::thread;
 use eframe::Frame;
 
 /// A `Browser` structure that simulates a web browser with multiple tabs.
@@ -57,6 +58,7 @@ pub struct Browser {
     focus: Option<String>,
     pub(crate) cookie_jar: Arc<RwLock<HashMap<String, (String, HashMap<String, String>)>>>,
     pub(crate) measure: Arc<std::sync::Mutex<MeasureTime>>,
+    active_tab_scroll: f32,
 }
 
 impl Browser {
@@ -70,6 +72,7 @@ impl Browser {
                 focus: None,
                 cookie_jar: cookie_jar.clone(),
                 measure: Arc::new(std::sync::Mutex::new(MeasureTime::new())),
+                active_tab_scroll: 0.0
             };
         let browser = Arc::new(RwLock::new(browser_obj));
 
@@ -91,13 +94,13 @@ impl Browser {
     pub fn new_tab_internal(&mut self, cc: &Context, url: Url)
     {
         let tab = Tab::new(cc, HEIGHT - self.chrome.borrow().bottom(), self.cookie_jar.clone(), Some(self.measure.clone()));
-        Tab::load(tab.clone(), url, None);
+        Tab::send_message(tab.clone(), TabMessage::Load { url, body: None });
         self.tabs.push(tab.clone());
         self.current_tab = Some(tab.clone());
     }
 
     pub fn load_first_tab(&mut self, url: Url) {
-        Tab::load(self.tabs[0].clone(), url, None);
+        Tab::send_message(self.tabs[0].clone(), TabMessage::Load { url, body: None });
         self.tabs[0].write().unwrap().tab_height = HEIGHT - self.chrome.borrow().bottom();
     }
 
@@ -205,34 +208,81 @@ impl Browser {
         }
     }
 
+    fn clamp_scroll(&mut self) {
+        if let Some(tab) = &self.current_tab {
+            let tab_read = tab.read().unwrap();
+            let height = tab_read.tab_height - self.chrome.borrow().bottom();
+            let max_scroll = height;
+            print!("max_scroll: {}, active_tab_scroll: {}\n", max_scroll, self.active_tab_scroll);
+            if self.active_tab_scroll < 0.0 {
+                self.active_tab_scroll = 0.0;
+            } else if self.active_tab_scroll > max_scroll {
+                self.active_tab_scroll = max_scroll;
+            }
+        }
+    }
+    
+    fn raster(&mut self, ui: &mut Ui) {
+        self.measure.lock().unwrap().time("raster", thread::current().id());
+        egui::CentralPanel::default()
+            .frame(egui::Frame::new().fill(Color32::WHITE))
+            .show_inside(ui, |ui| {
+                let painter = ui.painter();
+                if let Some(tab) = &self.current_tab {
+                    let tab_read = tab.read().unwrap();
+                    let scroll_y = self.active_tab_scroll;
+                    for cmd in &*tab_read.draw_commands {
+                        if (cmd.top() < scroll_y + HEIGHT) || (cmd.bottom() > self.active_tab_scroll) {
+                            Self::draw_on_screen(painter, self.active_tab_scroll - self.chrome.borrow().bottom(), &cmd);
+                        }
+                    }
+                }
+                let chrome = self.chrome.borrow();
+    
+                for cmd in &*chrome.draw_commands
+                {
+                    Self::draw_on_screen(painter, 0.0, &cmd);
+                }
+            });
+        self.measure.lock().unwrap().stop("raster", thread::current().id());
+    }
 
 }
 
 impl eframe::App for Browser {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut Frame) {
         self.chrome.borrow_mut().init(ui.ctx());
-        {
-            if let Some(tab) = &self.current_tab {
-                let mut tab = tab.write().unwrap();
-                tab.update_layout(ui.ctx());
-            }
-            
-        }
         self.chrome.borrow_mut().draw(ui.ctx(), &*self.tabs, self.current_tab.as_ref());
 
-        if let Some(tab) = &self.current_tab {{
-            Tab::run_tasks(tab.clone());
-            
+        if let Some(tab) = self.current_tab.clone() {
+            let mut has_raf = false;
+            {
+                let mut tab_write = tab.write().unwrap();
+                if tab_write.has_raf_request {
+                    tab_write.has_raf_request = false;
+                    has_raf = true;
+                }
+            }
+            if has_raf {
+                Tab::send_message(tab.clone(), TabMessage::AnimationFrame);
+            }
+
             if tab.read().unwrap().needs_redraw {
                 ui.ctx().request_repaint();
             }
 
             if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
-                tab.write().unwrap().scroll_down();
+                print!("ArrowDown pressed\n");
+                Tab::send_message(tab.clone(), TabMessage::ScrollDown);
+                self.active_tab_scroll += 20.0;
+                self.clamp_scroll();
+                self.raster(ui);
+                
             }
 
             if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 self.chrome.borrow_mut().on_enter(tab.clone());
+                
             }
         }
 
@@ -256,7 +306,7 @@ impl eframe::App for Browser {
                         }
                         ChromeAction::GoBack => {
                             if let Some(tab) = &self.current_tab {
-                                Tab::go_back(tab.clone());
+                                Tab::send_message(tab.clone(), TabMessage::GoBack);
                             }
                            
                         }
@@ -266,10 +316,13 @@ impl eframe::App for Browser {
                 self.focus = Some("content".parse().unwrap());
                 self.chrome.borrow_mut().blur();
                 if let Some(tab) = &self.current_tab {
-                    tab.write().unwrap().update_layout(ui.ctx());
-                    Tab::click(tab.clone(), pos - Vec2::new(0.0, self.chrome.borrow().bottom()));
+                    Tab::send_message(tab.clone(), TabMessage::Click { position: pos - Vec2::new(0.0, self.chrome.borrow().bottom()) });
                 }
             }
+        }
+
+        if ui.input(|i| i.viewport().close_requested()){
+            self.measure.lock().unwrap().finish();
         }
 
         let chrome = self.chrome.clone();
@@ -281,7 +334,7 @@ impl eframe::App for Browser {
                     chrome.borrow_mut().keypress(text);
                     if focus == Some("content".parse().unwrap()) {
                         if let Some(tab) = &current_tab {
-                            Tab::keypress(tab.clone(), text);
+                            Tab::send_message(tab.clone(), TabMessage::KeyPress { text: text.clone() });
                         }
                     }
 
@@ -289,28 +342,10 @@ impl eframe::App for Browser {
             }
         });
 
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(Color32::WHITE))
-            .show_inside(ui, |ui| {
-                let painter = ui.painter();
-                if let Some(tab) = &self.current_tab {
-                    let tab_read = tab.read().unwrap();
-                    let scroll_y = tab_read.scroll_y;
-                    for cmd in &*tab_read.draw_commands {
-                        if (cmd.top() < scroll_y + HEIGHT) || (cmd.bottom() > scroll_y) {
-                            Self::draw_on_screen(painter, scroll_y - self.chrome.borrow().bottom(), &cmd);
-                        }
-                    }
-                }
-                let chrome = self.chrome.borrow();
-
-                for cmd in &*chrome.draw_commands
-                {
-                    Self::draw_on_screen(painter, 0.0, &cmd);
-                }
-            });
+        self.raster(ui);
     }
 
 
-}
+
+
 }

@@ -1,42 +1,28 @@
-use std::sync::{Arc, RwLock};
-
-use crate::{tab::Tab, task::Task};
+use crate::tab::TabMessage;
+use crate::task::Task;
 
 /// A task runner that manages and executes scheduled tasks.
 /// 
-/// Maintains a queue of tasks and executes them one at a time.
+/// Sends tasks to the tab's main thread event loop.
 pub struct TaskRunner {
-    pub tab: Arc<RwLock<Tab>>,
-    pub tasks: Vec<Task>,
-    pub condvar: Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>,
-    pub ctx: Option<egui::Context>,
+    pub(crate) task_tx: std::sync::mpsc::Sender<TabMessage>,
 }
 
 impl TaskRunner {
+    pub fn new(task_tx: std::sync::mpsc::Sender<TabMessage>) -> Self {
+        Self { task_tx }
+    }
+
     /// Schedules a task to be run.
     /// 
     /// # Arguments
     /// * `task` - The task to schedule
     pub fn schedule_task(&mut self, task: Task) {
-        // Acquire the lock to ensure thread safety when modifying the task queue.
-        let lock = self.condvar.0.lock().unwrap();
-        self.tasks.push(task);
-        // Notify any waiting threads that a new task has been scheduled.
-        self.condvar.1.notify_all();
-        // Release the lock after modifying the task queue.
-        drop(lock);
-
-        // Wake up Egui loop directly without acquiring a lock on Tab
-        if let Some(ref ctx) = self.ctx {
-            ctx.request_repaint();
-        }
+        let _ = self.task_tx.send(TabMessage::RunTask(task));
     }
-
-    /// Runs the next scheduled task in the queue.
-    /// 
-    /// If there are no tasks, this method does nothing.
 
     pub fn run(&mut self) {
-        // Obsolete: Use Tab::run_tasks() instead to avoid RwLock deadlocks.
+        // Obsolete: Use Tab's event loop thread instead.
     }
 }
+
