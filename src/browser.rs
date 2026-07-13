@@ -1,4 +1,4 @@
-﻿use crate::chrome::{Chrome, ChromeAction};
+use crate::chrome::{Chrome, ChromeAction};
 use crate::layout::HEIGHT;
 use crate::measure_time::MeasureTime;
 use crate::tab::{self, DrawCommand, Tab, TabMessage};
@@ -211,8 +211,7 @@ impl Browser {
     fn clamp_scroll(&mut self) {
         if let Some(tab) = &self.current_tab {
             let tab_read = tab.read().unwrap();
-            let height = tab_read.tab_height - self.chrome.borrow().bottom();
-            let max_scroll = height;
+            let max_scroll = tab_read.max_scroll();
             print!("max_scroll: {}, active_tab_scroll: {}\n", max_scroll, self.active_tab_scroll);
             if self.active_tab_scroll < 0.0 {
                 self.active_tab_scroll = 0.0;
@@ -255,13 +254,22 @@ impl eframe::App for Browser {
         self.chrome.borrow_mut().draw(ui.ctx(), &*self.tabs, self.current_tab.as_ref());
 
         if let Some(tab) = self.current_tab.clone() {
+            let mut sync_needed = false;
             let mut has_raf = false;
             {
                 let mut tab_write = tab.write().unwrap();
+                tab_write.tab_height = HEIGHT - self.chrome.borrow().bottom();
+                if tab_write.scroll_sync_needed {
+                    tab_write.scroll_sync_needed = false;
+                    sync_needed = true;
+                }
                 if tab_write.has_raf_request {
                     tab_write.has_raf_request = false;
                     has_raf = true;
                 }
+            }
+            if sync_needed {
+                self.active_tab_scroll = tab.read().unwrap().scroll_y;
             }
             if has_raf {
                 Tab::send_message(tab.clone(), TabMessage::AnimationFrame);
@@ -274,7 +282,7 @@ impl eframe::App for Browser {
             if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
                 print!("ArrowDown pressed\n");
                 Tab::send_message(tab.clone(), TabMessage::ScrollDown);
-                self.active_tab_scroll += 20.0;
+                self.active_tab_scroll += crate::tab::SCROLL_STEP;
                 self.clamp_scroll();
                 self.raster(ui);
                 
@@ -303,6 +311,7 @@ impl eframe::App for Browser {
                         }
                         ChromeAction::SelectTab(index) => {
                             self.current_tab = Some(self.tabs[index].clone());
+                            self.active_tab_scroll = self.tabs[index].read().unwrap().scroll_y;
                         }
                         ChromeAction::GoBack => {
                             if let Some(tab) = &self.current_tab {

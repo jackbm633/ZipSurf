@@ -206,9 +206,10 @@ pub struct Tab {
     pub(crate) ctx: Option<Context>,
     pub(crate) measure: Option<Arc<std::sync::Mutex<crate::measure_time::MeasureTime>>>,
     pub(crate) has_raf_request: bool,
+    pub(crate) scroll_sync_needed: bool,
 }
 
-const SCROLL_STEP: f32 = 100.0;
+pub(crate) const SCROLL_STEP: f32 = 100.0;
 
 impl Default for Tab {
     /// Returns a `Browser` instance with empty buffers and default scroll position.
@@ -235,6 +236,7 @@ impl Default for Tab {
             ctx: None,
             measure: None,
             has_raf_request: false,
+            scroll_sync_needed: true,
         }
     }
 }
@@ -318,6 +320,18 @@ impl Tab {
         tab_rc
     }
 
+    pub fn max_scroll(&self) -> f32 {
+        match &self.document {
+            None => 0.0,
+            Some(doc) => {
+                f32::max(
+                    0.0,
+                    doc.read().unwrap().size.unwrap_or(Vec2::ZERO).y + 2.0 * VSTEP - self.tab_height,
+                )
+            }
+        }
+    }
+
     pub fn update_layout(&mut self, ctx: &egui::Context) {
         if self.needs_redraw {
             match self.document.as_mut() {
@@ -335,6 +349,11 @@ impl Tab {
                     if let Some(ref measure) = self.measure {
                         measure.lock().unwrap().stop("draw", thread::current().id());
                     }
+
+                    // Layout updated, clamp scroll_y and mark sync needed
+                    let max_scroll = self.max_scroll();
+                    self.scroll_y = self.scroll_y.clamp(0.0, max_scroll);
+                    self.scroll_sync_needed = true;
                 }
             }
         }
@@ -345,15 +364,12 @@ impl Tab {
             None => {
                 panic!("Browser document not initialized.")
             }
-            Some(doc) => {
-                let max_y = f32::max(
-                    0.0,
-                    doc.read().unwrap().size.unwrap_or(Vec2::ZERO).y + 2.0 * VSTEP - self.tab_height,
-                );
+            Some(_) => {
+                let max_y = self.max_scroll();
                 self.scroll_y = (self.scroll_y + crate::tab::SCROLL_STEP).min(max_y);
+                self.scroll_sync_needed = true;
             }
         }
-        self.scroll_y += crate::tab::SCROLL_STEP;
     }
 
     pub(crate) fn click(this: Arc<RwLock<Tab>>, position: Pos2) {
@@ -472,6 +488,7 @@ impl Tab {
         this.write().unwrap().url = Some(url.clone());
         this.write().unwrap().draw_commands.clear();
         this.write().unwrap().scroll_y = 0.0;
+        this.write().unwrap().scroll_sync_needed = true;
         match url.request(body, cookie_jar) {
             Ok(body) => {
 
